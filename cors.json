@@ -1,0 +1,9 @@
+[
+    {
+     "origin": ["http://localhost:5174", "https://your-live-site.com"],
+
+      "method": ["GET", "POST", "PUT", "DELETE"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+  

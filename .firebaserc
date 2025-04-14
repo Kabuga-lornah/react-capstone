@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "pet-store-9a4bc",
+    "staging": "pet-store-9a4bc"
+  },
+  "targets": {},
+  "etags": {}
+}

@@ -1,147 +1,241 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom"; // Import Link from react-router-dom
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "./pages/AuthContext";
+import { auth } from "./pages/firebaseconfig"; 
 
 const Navbar = () => {
+  const { user, userData, isRehomer } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showLoginOptions, setShowLoginOptions] = useState(false);
+  const [petPouchCount, setPetPouchCount] = useState(0);
+  const navigate = useNavigate();
 
-  const toggleDropdown = () => {
-    setShowDropdown(true);
-  };
+  useEffect(() => {
+    // Initialize pet pouch count from localStorage
+    const count = localStorage.getItem('petPouchCount') || 0;
+    setPetPouchCount(Number(count));
+  }, []);
 
-  const hideDropdown = () => {
+  const handleLogout = async () => {
+    await auth.signOut();
+    navigate("/");
     setShowDropdown(false);
   };
 
   return (
-    <nav style={styles.navbar}>
-      <div style={styles.left}>
-        <h1 style={styles.title}>
-          <span style={styles.paw}>🐾</span> 
-          <span style={styles.titleText}>My FurryFriends</span>
-        </h1>
-      </div>
-
-      <ul style={styles.links}>
-        <li style={styles.link}>
-          <Link to="/" style={styles.navLink}>Home</Link>
-        </li>
-        <li style={styles.link}>
-          <Link to="/quiz" style={styles.navLink}>Quiz</Link>
-        </li>
-        <li
-          style={{ ...styles.link, position: "relative" }}
-          onMouseEnter={toggleDropdown}
-          onMouseLeave={hideDropdown}
-        >
-          Categories
-          {showDropdown && (
-            <ul style={styles.dropdown}>
-              <li style={styles.dropdownItem}>Pet Type</li>
-              <li style={styles.dropdownItem}>Personality</li>
-              <li style={styles.dropdownItem}>Lifestyle</li>
-              <li style={styles.dropdownItem}>Appearance</li>
-              <li style={styles.dropdownItem}>Purpose</li>
-            </ul>
+    <nav className="navbar">
+      <div className="nav-container">
+        <Link to="/" className="logo">My FurryFriends</Link>
+        
+        <div className="nav-links">
+          <Link to="/" className="nav-link">Home</Link>
+          <Link to="/pets" className="nav-link">Browse Pets</Link>
+          <Link to="/quiz" className="nav-link">Quiz</Link>
+          <Link to="/blog" className="nav-link">Blog</Link>
+          <Link to="/contact" className="nav-link">Contact Us</Link>
+          {user && (
+            <Link to="/pet-pouch" className="nav-link">
+              Pet Pouch {petPouchCount > 0 ? `(${petPouchCount})` : ''}
+            </Link>
           )}
-        </li>
-        <li style={styles.link}>Blog</li>
-        <li style={styles.link}>Contact Us</li>
-      </ul>
+        </div>
 
-      <div style={styles.right}>
-        {/* Wrap the Login button with Link */}
-        <Link to="/login" style={styles.link}>
-          <button style={styles.button}>Login</button>
-        </Link>
-        <button style={styles.button}>Pet Pouch</button>
+        <div className="auth-section">
+          {user ? (
+            <div className="user-menu">
+              {isRehomer() && (
+                <Link to="/rehomer-dashboard" className="nav-link">Dashboard</Link>
+              )}
+              
+              <div 
+                className="user-icon"
+                onClick={() => setShowDropdown(!showDropdown)}
+              >
+                {user.displayName?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase()}
+              </div>
+              
+              {showDropdown && (
+                <div className="dropdown-menu">
+                  <button onClick={handleLogout} className="dropdown-item">
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="login-container">
+              <button 
+                onClick={() => setShowLoginOptions(!showLoginOptions)}
+                className="login-button"
+              >
+                Login
+              </button>
+              
+              {showLoginOptions && (
+                <div className="login-dropdown">
+                  <Link 
+                    to="/login/user" 
+                    className="login-option"
+                    onClick={() => setShowLoginOptions(false)}
+                  >
+                    As User
+                  </Link>
+                  <Link 
+                    to="/login/rehomer" 
+                    className="login-option"
+                    onClick={() => setShowLoginOptions(false)}
+                  >
+                    As Rehomer
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </nav>
   );
 };
 
-const styles = {
-  navbar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px 24px",
-    backgroundColor: "#FFA500", 
-    boxShadow: "0 2px 4px rgb(244, 91, 8)",
-    position: "relative",
-  },
-  left: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
-  title: {
-    fontFamily: "Playfair Display, serif", 
-    fontSize: "24px",
-    color: "#ffffff",
-    fontWeight: "bold",
-    margin: 0,
-    fontFamily: "'Playfair Display', serif", 
-    display: "flex",
-    alignItems: "center",
-  },
-  paw: {
-    fontSize: "30px", 
-    marginRight: "8px",
-  },
-  titleText: {
-    fontSize: "26px", 
-    color: "#ffffff",
-    fontWeight: "bold",
-  },
-  links: {
-    display: "flex",
-    listStyle: "none",
-    gap: "20px",
-    margin: 0,
-    padding: 0,
-  },
-  link: {
-    color: "#ffffff",
-    cursor: "pointer",
-    fontWeight: "500",
-    position: "relative",
-  },
-  navLink: {
-    textDecoration: "none", 
-    color: "#ffffff", 
-    fontWeight: "500",
-  },
-  dropdown: {
-    position: "absolute",
-    top: "35px",
-    left: 0,
-    backgroundColor: "#ffffff",
-    boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-    listStyle: "none",
-    padding: "8px 0",
-    margin: 0,
-    borderRadius: "6px",
-    zIndex: 1000,
-    minWidth: "120px",
-  },
-  dropdownItem: {
-    padding: "8px 16px",
-    color: "#333",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  },
-  right: {
-    display: "flex",
-    gap: "12px",
-  },
-  button: {
-    backgroundColor: "transparent",
-    border: "1px solid #ffffff",
-    padding: "6px 12px",
-    borderRadius: "6px",
-    color: "#ffffff",
-    cursor: "pointer",
-  },
-};
+const styles = `
+  .navbar {
+    background-color: #FFA500;
+    padding: 1rem 2rem;
+    position: relative;
+    z-index: 100;
+  }
+  
+  .nav-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  
+  .logo {
+    color: white;
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-decoration: none;
+  }
+  
+  .nav-links {
+    display: flex;
+    gap: 2rem;
+  }
+  
+  .nav-link {
+    color: white;
+    text-decoration: none;
+    transition: opacity 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .nav-link:hover {
+    opacity: 0.8;
+  }
+  
+  .auth-section {
+    position: relative;
+  }
+  
+  .user-menu {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  
+  .user-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: white;
+    color: #FFA500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-weight: bold;
+    transition: transform 0.2s;
+  }
+  
+  .user-icon:hover {
+    transform: scale(1.05);
+  }
+  
+  .dropdown-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 0.5rem;
+    min-width: 120px;
+  }
+  
+  .dropdown-item {
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem;
+    cursor: pointer;
+    color: #333;
+  }
+  
+  .dropdown-item:hover {
+    background-color: #f5f5f5;
+  }
+  
+  .login-container {
+    position: relative;
+  }
+  
+  .login-button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+  
+  .login-button:hover {
+    background-color: rgba(255,255,255,0.1);
+  }
+  
+  .login-dropdown {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 0.5rem;
+    min-width: 120px;
+  }
+  
+  .login-option {
+    display: block;
+    padding: 0.5rem;
+    color: #FFA500;
+    text-decoration: none;
+  }
+  
+  .login-option:hover {
+    background-color: #f5f5f5;
+  }
+`;
+
+// Inject styles
+const styleElement = document.createElement("style");
+styleElement.textContent = styles;
+document.head.appendChild(styleElement);
 
 export default Navbar;
