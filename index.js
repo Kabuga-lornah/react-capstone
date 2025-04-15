@@ -1,30 +1,27 @@
-const functions = require("firebase-functions");
-const cors = require("cors")({ origin: true }); // Allow all origins
-const twilio = require("twilio");
+const functions = require('firebase-functions');
+const cors = require('cors')({origin: true}); 
+const accountSid = functions.config().twilio.accountsid;
+const authToken = functions.config().twilio.authtoken;
+const client = require('twilio')(accountSid, authToken);
 
-const accountSid = "your_twilio_sid";
-const authToken = "your_twilio_token";
-const client = new twilio(accountSid, authToken);
+exports.sendAdoptionSMS = functions.https.onRequest((request, response) => {
+    cors(request, response, () => { 
 
-exports.sendAdoptionSMS = functions.https.onRequest((req, res) => {
-  cors(req, res, async () => {
-    const { phoneNumber, message } = req.body;
+        const { phoneNumber, message } = request.body;
 
-    if (!phoneNumber || !message) {
-      return res.status(400).send("Missing phoneNumber or message");
-    }
-
-    try {
-      await client.messages.create({
-        body: message,
-        to: phoneNumber,
-        from: "your_twilio_verified_number"
-      });
-
-      return res.status(200).send({ success: true });
-    } catch (error) {
-      console.error("Twilio error:", error);
-      return res.status(500).send({ error: "Failed to send SMS" });
-    }
-  });
+        client.messages
+            .create({
+                body: message,
+                to: phoneNumber,
+                from: '+18666394834'
+            })
+            .then(message => {
+                console.log(message.sid)
+                response.status(200).send({ success: true, message: 'SMS sent successfully!' });
+            })
+            .catch(error => {
+                console.error(error);
+                response.status(500).send({ success: false, message: 'SMS failed to send.' });
+            });
+    });
 });

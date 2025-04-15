@@ -1,8 +1,13 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useContext } from "react";
+
 import { useAuth } from "../pages/AuthContext";
-import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, getDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../pages/firebaseconfig";
 import { useNavigate } from "react-router-dom";
+import { PetPouchContext } from './PetPouchContext';
+
+
+
 
 const personalityTags = [
   "Friendly",
@@ -19,7 +24,7 @@ const personalityTags = [
 const styles = {
   petCardsContainer: {
     display: "flex",
-    justifyContent: "center",
+    // justifyContent: "center",
     gap: "20px",
     flexWrap: "wrap",
   },
@@ -37,10 +42,11 @@ const styles = {
   petImage: {
     width: "100%",
     height: "180px",
-    objectFit: "contain",
+    objectFit: "cover",
     borderRadius: "8px",
     marginBottom: "10px",
   },
+  
   petName: {
     fontSize: "20px",
     fontWeight: "bold",
@@ -74,6 +80,13 @@ const styles = {
     fontSize: "16px",
     transition: "background-color 0.3s",
   },
+  categoryHeading: {
+    fontSize: "28px",
+    fontWeight: "700",
+    marginBottom: "15px",
+    color: "#2d3748",
+  },
+  
   adoptedButton: {
     backgroundColor: "#FFA500",
     color: "#ffffff",
@@ -83,8 +96,28 @@ const styles = {
     cursor: "default",
     fontSize: "16px",
   },
-};
+  notification: {
+    position: "fixed",
+    bottom: "20px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    backgroundColor: "white",
+    color: "black",
+    padding: "15px 25px",
+    borderRadius: "50px",
+    boxShadow: "0 4px 8px rgba(0,0,0,0.2)",
+    zIndex: 1000,
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    animation: "slideUp 0.5s ease-out",
+  },
+  "@keyframes slideUp": {
+    "0%": { transform: "translateX(-50%) translateY(100px)", opacity: 0 },
+    "100%": { transform: "translateX(-50%) translateY(0)", opacity: 1 },
+  },
 
+};
 const PetsList = () => {
   const [pets, setPets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -92,18 +125,40 @@ const PetsList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [likedPets, setLikedPets] = useState([]);
   const [adoptedPets, setAdoptedPets] = useState([]);
+  const [notification, setNotification] = useState({ show: false, petName: "" });
+
+  const notificationTimerRef = useRef(null);
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { updatePetPouchCount } = useContext(PetPouchContext);
 
   const addToPetPouch = async (pet) => {
     if (!user) {
       alert("Please log in to adopt pets");
       return;
     }
-
+  
     try {
+      const petRef = doc(db, "pets", pet.id);
+      
+      // Update the pet's adopted status to true
+      await updateDoc(petRef, {
+        adopted: true
+      });
+  
+      const petDoc = await getDoc(petRef);
+  
+      if (!petDoc.exists()) {
+        console.error("Pet not found in 'pets' collection");
+        return;
+      }
+  
+      const petData = petDoc.data();
+      console.log("Adding pet to pouch with data:", petData);
+  
       await addDoc(collection(db, "petPouch"), {
         userId: user.uid,
+        petId: pet.id,
         name: pet.name,
         breed: pet.breed,
         age: pet.age,
@@ -111,13 +166,19 @@ const PetsList = () => {
         personality: pet.personality,
         type: pet.type,
         addedAt: new Date(),
+        rehomerId: petData.rehomerId,
+        rehomerName: petData.rehomerName,
       });
-
+  
       setAdoptedPets([...adoptedPets, pet.id]);
       updateNavbarCounter();
+      
+      // Instead of filtering, we'll rely on the Firestore query to refresh the list
+      // Remove this line: setPets(prevPets => prevPets.filter(p => p.id !== pet.id));
     } catch (error) {
       console.error("Error adding to pet pouch:", error);
     }
+    updatePetPouchCount();
   };
 
   const updateNavbarCounter = () => {
@@ -128,13 +189,39 @@ const PetsList = () => {
     }
   };
 
-  const toggleLike = (petId) => {
-    setLikedPets((prevLiked) =>
-      prevLiked.includes(petId)
-        ? prevLiked.filter((id) => id !== petId)
-        : [...prevLiked, petId]
-    );
+  const handleLike = (petId) => {
+    const isLiked = likedPets.includes(petId);
+    let updatedLikes;
+
+    if (isLiked) {
+      // Unliking
+      updatedLikes = likedPets.filter((id) => id !== petId);
+      setNotification({ show: false, petName: "" });
+
+      if (notificationTimerRef.current) {
+        clearTimeout(notificationTimerRef.current);
+      }
+    } else {
+      // Liking
+      updatedLikes = [...likedPets, petId];
+      const pet = pets.find((p) => p.id === petId);
+
+      if (pet) {
+        setNotification({ show: true, petName: pet.name });
+
+        if (notificationTimerRef.current) {
+          clearTimeout(notificationTimerRef.current);
+        }
+
+        notificationTimerRef.current = setTimeout(() => {
+          setNotification({ show: false, petName: "" });
+        }, 3000);
+      }
+    }
+
+    setLikedPets(updatedLikes);
   };
+  
 
   useEffect(() => {
     const fetchPets = async () => {
@@ -149,307 +236,7 @@ const PetsList = () => {
           personality: doc.data().personality || [],
         }));
 
-        const hardcodedPets = [
-          {
-            id: "dog1",
-            name: "Buddy",
-            breed: "Labrador",
-            age: "2 years",
-            personality: ["Friendly", "Playful"],
-            imageUrl: "/Labrador.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog2",
-            name: "Max",
-            breed: "Beagle",
-            age: "3 years",
-            personality: ["Energetic", "Loyal"],
-            imageUrl: "/beagle.jpg",
-            type: "dog",
-          },
-          {
-            id: "dog3",
-            name: "Charlie",
-            breed: "Golden Retriever",
-            age: "4 years",
-            personality: ["Affectionate", "Friendly"],
-            imageUrl: "/golden retriver.jpg",
-            type: "dog",
-          },
-          {
-            id: "dog4",
-            name: "Daisy",
-            breed: "Poodle",
-            age: "1 year",
-            personality: ["Intelligent", "Shy"],
-            imageUrl: "/poodle.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog5",
-            name: "Bella",
-            breed: "Bulldog",
-            age: "2.5 years",
-            personality: ["Calm", "Loyal"],
-            imageUrl: "/bulldog.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog6",
-            name: "Rocky",
-            breed: "Rottweiler",
-            age: "3.5 years",
-            personality: ["Independent", "Friendly"],
-            imageUrl: "/Rottweiler.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog7",
-            name: "Lucy",
-            breed: "Shih Tzu",
-            age: "2 years",
-            personality: ["Playful", "Shy"],
-            imageUrl: "/shih tzu.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog8",
-            name: "zeus",
-            breed: "German Shepherd",
-            age: "4 years",
-            personality: ["Loyal", "Intelligent"],
-            imageUrl: "/zeus.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog9",
-            name: "Ruby",
-            breed: "Boxer",
-            age: "1.5 years",
-            personality: ["Energetic", "Affectionate"],
-            imageUrl: "/beagle.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog10",
-            name: "Bailey",
-            breed: "Chihuahua",
-            age: "3 years",
-            personality: ["Friendly", "Calm"],
-            imageUrl: "/chihuahua.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog11",
-            name: "Coco",
-            breed: "Golden Retriver",
-            age: "1 year",
-            personality: ["Independent", "Playful"],
-            imageUrl: "/3 yrs golden retriver.jpeg",
-            type: "dog",
-          },
-          {
-            id: "dog12",
-            name: "Toby",
-            breed: "Doberman",
-            age: "2.5 years",
-            personality: ["Energetic", "Loyal"],
-            imageUrl: "/Dobermann.jpeg",
-            type: "dog",
-          },
-
-          // Cats (8)
-          {
-            id: "cat1",
-            name: "Whiskers",
-            breed: "Persian",
-            age: "3 years",
-            personality: ["Calm", "Independent"],
-            imageUrl: "/persian.jpeg",
-            type: "cat",
-          },
-          {
-            id: "cat2",
-            name: "Luna",
-            breed: "Siamese",
-            age: "2 years",
-            personality: ["Affectionate", "Intelligent"],
-            imageUrl: "/siames 2.jpeg",
-            type: "cat",
-          },
-          {
-            id: "cat3",
-            name: "Mittens",
-            breed: "Maine Coon",
-            age: "4 years",
-            personality: ["Loyal", "Shy"],
-            imageUrl: "/cat3.jpg",
-            type: "cat",
-          },
-          {
-            id: "cat4",
-            name: "Shadow",
-            breed: "Bengal",
-            age: "1.5 years",
-            personality: ["Playful", "Energetic"],
-            imageUrl: "/bengal.jpeg",
-            type: "cat",
-          },
-          {
-            id: "cat5",
-            name: "Simba",
-            breed: "Abyssinian",
-            age: "3 years",
-            personality: ["Intelligent", "Friendly"],
-            imageUrl: "/Abyssinian.jpeg",
-            type: "cat",
-          },
-          {
-            id: "cat6",
-            name: "Zoe",
-            breed: "Russian Blue",
-            age: "2 years",
-            personality: ["Shy", "Calm"],
-            imageUrl: "/russian blue.jpeg",
-            type: "cat",
-          },
-          {
-            id: "cat7",
-            name: "Nala",
-            breed: "British Shorthair",
-            age: "2.8 years",
-            personality: ["Loyal", "Independent"],
-            imageUrl: "/british shorthair.jpeg",
-            type: "cat",
-          },
-          {
-            id: "cat8",
-            name: "Tiger",
-            breed: "Tabby",
-            age: "3.5 years",
-            personality: ["Playful", "Affectionate"],
-            imageUrl: "/cat8.jpg",
-            type: "cat",
-          },
-
-          // Snakes (2)
-          {
-            id: "snake1",
-            name: "Slither",
-            breed: "Corn Snake",
-            age: "2 years",
-            personality: ["Calm", "Shy"],
-            imageUrl: "/snake.jpg",
-            type: "snake",
-          },
-          {
-            id: "snake2",
-            name: "Fang",
-            breed: "Ball Python",
-            age: "3 years",
-            personality: ["Independent", "Calm"],
-            imageUrl: "/snake2.jpg",
-            type: "snake",
-          },
-
-          // Bunnies (5)
-          {
-            id: "bunny1",
-            name: "Thumper",
-            breed: "Mini Lop",
-            age: "1 year",
-            personality: ["Friendly", "Playful"],
-            imageUrl: "/.jpg",
-            type: "bunny",
-          },
-          {
-            id: "bunny2",
-            name: "Snowball",
-            breed: "Angora",
-            age: "1.5 years",
-            personality: ["Shy", "Affectionate"],
-            imageUrl: "/bunny2.jpg",
-            type: "bunny",
-          },
-          {
-            id: "bunny3",
-            name: "Fluffy",
-            breed: "Lionhead",
-            age: "2 years",
-            personality: ["Energetic", "Playful"],
-            imageUrl: "/bunny3.jpg",
-            type: "bunny",
-          },
-          {
-            id: "bunny4",
-            name: "Clover",
-            breed: "Dutch",
-            age: "2.2 years",
-            personality: ["Independent", "Calm"],
-            imageUrl: "/bunny4.jpg",
-            type: "bunny",
-          },
-          {
-            id: "bunny5",
-            name: "Binky",
-            breed: "Rex",
-            age: "1.8 years",
-            personality: ["Loyal", "Friendly"],
-            imageUrl: "/bunny5.jpg",
-            type: "bunny",
-          },
-
-          // Ducks (3)
-          {
-            id: "duck1",
-            name: "Quackers",
-            breed: "Parrot",
-            age: "4 years",
-            personality: ["Talkative and bright"],
-            imageUrl: "/duck.jpeg",
-            type: "duck",
-          },
-          {
-            id: "duck2",
-            name: "Feathers",
-            breed: "Mallard",
-            age: "2 years",
-            personality: ["Friendly", "Playful"],
-            imageUrl: "/duck2.jpg",
-            type: "duck",
-          },
-          {
-            id: "duck3",
-            name: "Daffy",
-            breed: "Pekin",
-            age: "3 years",
-            personality: ["Calm", "Affectionate"],
-            imageUrl: "/duck3.jpg",
-            type: "duck",
-          },
-
-          // Chicks (2)
-          {
-            id: "chick1",
-            name: "Sunny",
-            breed: "Silkie",
-            age: "0.5 years",
-            personality: ["Energetic", "Friendly"],
-            imageUrl: "/chick1.jpg",
-            type: "chick",
-          },
-          {
-            id: "chick2",
-            name: "Peep",
-            breed: "Bantam",
-            age: "0.4 years",
-            personality: ["Shy", "Playful"],
-            imageUrl: "/chick2.jpg",
-            type: "chick",
-          },
-        ];
-        setPets([...petsData, ...hardcodedPets]);
+        setPets(petsData);
       } catch (error) {
         console.error("Error fetching pets:", error);
       } finally {
@@ -458,12 +245,59 @@ const PetsList = () => {
     };
 
     fetchPets();
-  }, []);
+}, [adoptedPets]);
+
+  useEffect(() => {
+    const fetchPetsRealtime = async () => {
+      try {
+        setLoading(true);
+        const q = query(
+          collection(db, "pets"),
+          where("adopted", "==", false)
+        );
+
+        
+
+        return 
+      } catch (error) {
+        console.error("Error fetching pets:", error);
+        setLoading(false);
+      }
+    };
+
+    
+  }, [user]);
 
   const handleTagToggle = (tag) => {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
+  };
+
+  const handleUpdateImage = (e, petId) => {
+    const file = e.target.files[0];
+    if (!file) return;
+  
+    const reader = new FileReader();
+  
+    reader.onloadend = async () => {
+      const base64String = reader.result;
+  
+      try {
+        const petDocRef = doc(db, "pets", petId);
+        await updateDoc(petDocRef, { imageUrl: base64String });
+       
+        setPets((prevPets) =>
+          prevPets.map((pet) =>
+            pet.id === petId ? { ...pet, imageUrl: base64String } : pet
+          )
+        );
+      } catch (error) {
+        console.error("Error saving image:", error);
+      }
+    };
+  
+    reader.readAsDataURL(file);
   };
 
   const filteredGroupedPets = pets
@@ -479,66 +313,6 @@ const PetsList = () => {
       groups[type].push(pet);
       return groups;
     }, {});
-  useEffect(() => {
-    const fetchPets = async () => {
-      try {
-        setLoading(true);
-        const q = query(
-          collection(db, "pets"),
-          where("adopted", "==", false)
-         
-        );
-
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-          const petsData = querySnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-            personality: doc.data().personality || [],
-          }));
-          setPets(petsData);
-          setLoading(false);
-        });
-
-        return unsubscribe;
-      } catch (error) {
-        console.error("Error fetching pets:", error);
-        setLoading(false);
-      }
-    };
-
-    fetchPets();
-  }, [user]);
-
-  const handleUpdateImage = (e, petId) => {
-    const file = e.target.files[0];
-    if (!file) return;
-  
-    const reader = new FileReader();
-  
-    reader.onloadend = async () => {
-      const base64String = reader.result;
-  
-      try {
-        // 1. Save to Firestore
-        const petDocRef = doc(db, "pets", petId);
-        await updateDoc(petDocRef, { imageUrl: base64String });
-  
-       
-        setPets((prevPets) =>
-          prevPets.map((pet) =>
-            pet.id === petId ? { ...pet, imageUrl: base64String } : pet
-          )
-        );
-  
-        console.log("Image updated and saved as Base64.");
-      } catch (error) {
-        console.error("Error saving image:", error);
-      }
-    };
-  
-    reader.readAsDataURL(file);
-  };
-  
 
   return (
     <div style={{ display: "flex", padding: "20px" }}>
@@ -616,7 +390,7 @@ const PetsList = () => {
   
       {/* Main Content */}
       <div style={{ flex: 1 }}>
-        {/* Search bar */}
+      
         <div style={{ marginBottom: "20px" }}>
           <input
             type="text"
@@ -639,7 +413,7 @@ const PetsList = () => {
         ) : (
           Object.entries(filteredGroupedPets).map(([type, petsArray]) => (
             <div key={type} style={{ marginBottom: "40px" }}>
-              <h1>{type}</h1>
+              <h1 style={styles.categoryHeading}>{type}</h1>
               <div style={styles.petCardsContainer}>
                 {petsArray.map((pet) => (
                   <div key={pet.id} style={styles.petCard}>
@@ -653,9 +427,9 @@ const PetsList = () => {
                       <span
                         style={{
                           ...styles.heart,
-                          color: likedPets.includes(pet.id) ? "red" : "#888",
+                          color: likedPets.includes(pet.id) ? "orange" : "#FFA500",
                         }}
-                        onClick={() => toggleLike(pet.id)}
+                        onClick={() => handleLike(pet.id)}
                       >
                         {likedPets.includes(pet.id) ? "❤️" : "🤍"}
                       </span>
@@ -694,6 +468,14 @@ const PetsList = () => {
           ))
         )}
       </div>
+      {/* Notification */}
+      {notification.show && (
+        <div style={styles.notification}>
+          <span style={{ fontSize: "18px", fontWeight: "bold" }}>
+            {notification.petName} likes you too! Want to adopt {notification.petName}? 💓
+          </span>
+        </div>
+      )}
     </div>
   );
 }

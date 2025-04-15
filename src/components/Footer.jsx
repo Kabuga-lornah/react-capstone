@@ -14,9 +14,7 @@ const Footer = () => {
           </div>
   
           <div className="flex space-x-4">
-            <a href="#" className="hover:underline hover:text-black">Privacy</a>
-            <a href="#" className="hover:underline hover:text-black">Terms</a>
-            <a href="#" className="hover:underline hover:text-black">Contact</a>
+            <a href="#" className="hover:underline hover:text-black">Contact Us</a>
           </div>
         </div>
       </footer>

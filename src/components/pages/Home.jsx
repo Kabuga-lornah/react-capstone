@@ -1,60 +1,95 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, addDoc, limit } from "firebase/firestore";
 import { db } from "../pages/firebaseconfig";
+import { useAuth } from "../pages/AuthContext";
 
 const Home = () => {
-  const [liked, setLiked] = useState([false, false, false, false, false]);
+  const [liked, setLiked] = useState([]);
   const [featuredPets, setFeaturedPets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [adoptedPets, setAdoptedPets] = useState([]);
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Add to pet pouch function
+  const addToPetPouch = async (pet) => {
+    if (!user) {
+      alert("Please log in to adopt pets");
+      navigate('/login');
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, "petPouch"), {
+        userId: user.uid,
+        petId: pet.id,
+        name: pet.name,
+        breed: pet.breed,
+        age: pet.age,
+        imageUrl: pet.imageUrl,
+        personality: pet.personality,
+        type: pet.type,
+        addedAt: new Date(),
+      });
+
+      setAdoptedPets([...adoptedPets, pet.id]);
+      // alert(`${pet.name} has been added to your Pet Pouch!`);
+    } catch (error) {
+      console.error("Error adding to pet pouch:", error);
+      alert("Failed to add pet to pouch. Please try again.");
+    }
+  };
 
   useEffect(() => {
-    const hardcodedPets = [
-      {
-        id: "1",
-        name: "Bella",
-        breed: "Golden Retriever",
-        age: "3 years",
-        personality: "Friendly and energetic",
-        imageUrl: "/golden retriver.jpg"
-      },
-      {
-        id: "2",
-        name: "Milo",
-        breed: "White Cat",
-        age: "2 years",
-        personality: "Curious and calm",
-        imageUrl: "/white cat.jpg"
-      },
-      {
-        id: "3",
-        name: "Luna",
-        breed: "Labrador",
-        age: "1 year",
-        personality: "Loyal and playful",
-        imageUrl: "/Labrador.jpeg"
-      },
-      {
-        id: "4",
-        name: "Quackers",
-        breed: "Parrot",
-        age: "4 years",
-        personality: "Talkative and bright",
-        imageUrl: "/duck.jpeg"
-      },
-      {
-        id: "5",
-        name: "Nibbles",
-        breed: "Rabbit",
-        age: "1.5 years",
-        personality: "Gentle and shy",
-        imageUrl: "/nibbles.jpeg"
+    const fetchPetPouch = async () => {
+      if (!user) return;
+      
+      try {
+        const q = query(
+          collection(db, "petPouch"),
+          where("userId", "==", user.uid)
+        );
+        const querySnapshot = await getDocs(q);
+        const adoptedIds = querySnapshot.docs.map(doc => doc.data().petId || doc.id);
+        setAdoptedPets(adoptedIds);
+      } catch (error) {
+        console.error("Error fetching pet pouch:", error);
       }
-    ];
-    
-    setFeaturedPets(hardcodedPets);
-    setLoading(false);
+    };
+
+    fetchPetPouch();
+  }, [user]);
+
+  useEffect(() => {
+    const fetchFeaturedPets = async () => {
+      try {
+        setLoading(true);
+        // Fetch 4 random non-adopted pets
+        const q = query(
+          collection(db, "pets"),
+          where("adopted", "==", false),
+          limit(4)
+        );
+        const querySnapshot = await getDocs(q);
+
+        const petsData = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          personality: doc.data().personality || [],
+        }));
+
+        setFeaturedPets(petsData);
+        // Initialize liked state for each pet
+        setLiked(petsData.map(pet => false));
+      } catch (error) {
+        console.error("Error fetching featured pets:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFeaturedPets();
   }, []);
 
   const toggleLike = (index) => {
@@ -68,7 +103,10 @@ const Home = () => {
   };
 
   const handleAdoptClick = (petId) => {
-    navigate(`/pet/${petId}`);
+    const pet = featuredPets.find(p => p.id === petId);
+    if (pet) {
+      addToPetPouch(pet);
+    }
   };
 
   const styles = {
@@ -247,7 +285,7 @@ const Home = () => {
       transition: "background-color 0.3s ease",
     },
     aboutSection: {
-      // backgroundColor: "#f1f1f1",
+     
       padding: "30px",
       borderRadius: "8px",
       textAlign: "center",
@@ -257,11 +295,11 @@ const Home = () => {
       lineHeight: "1.6",
       color: "#333333",
     },
-  };
+  }
 
   return (
     <div style={styles.container}>
-      {/* Hero Section */}
+      
       <section style={styles.heroSection}>
         <div style={styles.heroAnimations}>
           <img src="/paw gif.gif" alt="Paw animation" style={styles.leftAnimation} />
@@ -279,45 +317,51 @@ const Home = () => {
 
       <hr />
 
-      {/* Featured Pets Section */}
-      <section style={styles.featuredSection}>
+    
+     <section style={styles.featuredSection}>
         <h3 style={styles.sectionTitle}>Featured Pets</h3>
         {loading ? (
           <p>Loading featured pets...</p>
         ) : (
           <div style={styles.petCardsContainer}>
-            {featuredPets.map((pet, index) => (
-              <div key={pet.id} style={styles.petCard}>
-                <img
-                  src={pet.imageUrl || "/default-pet.jpg"}
-                  alt={pet.name}
-                  style={styles.petImage}
-                />
-                <h4 style={styles.petName}>
-                  {pet.name}
-                  <span
-                    style={{
-                      ...styles.heart,
-                      color: liked[index] ? "orange" : "#ccc",
-                    }}
-                    onClick={() => toggleLike(index)}
-                  >
-                    ♥
-                  </span>
-                </h4>
-                <p style={styles.petDescription}>{pet.breed} • {pet.age}</p>
-                <p style={styles.petPersonality}>{pet.personality}</p>
-                <button
-                  style={styles.petButton}
-                  onClick={() => handleAdoptClick(pet.id)}
-                >
-                  Adopt Me
-                </button>
-              </div>
-            ))}
-          </div>
+  {featuredPets.map((pet, index) => (
+    <div key={pet.id} style={styles.petCard}>
+      <img
+        src={pet.imageUrl || "/default-pet.jpg"}
+        alt={pet.name}
+        style={styles.petImage}
+      />
+      <div style={styles.petName}>
+        {pet.name}
+        <span
+          style={{
+            ...styles.heart,
+            color: liked[index] ? "red" : "#ccc",
+          }}
+          onClick={() => toggleLike(index)}
+        >
+          ♥
+        </span>
+      </div>
+      <p style={styles.petDescription}>{pet.breed} - {pet.age}</p>
+      <p style={styles.petPersonality}>
+        Personality: {pet.personality.join(", ")}
+      </p>
+      <button
+        style={styles.petButton}
+        onClick={() => handleAdoptClick(pet.id)}
+        disabled={adoptedPets.includes(pet.id)}
+      >
+        {adoptedPets.includes(pet.id) ? "Adopted" : "Adopt Me"}
+      </button>
+    </div>
+  ))}
+</div>
+
+
         )}
       </section>
+      
 
       {/* Quiz Section */}
       <section style={styles.quizSection}>
@@ -355,6 +399,7 @@ const Home = () => {
 
     </div>
   );
-};
+}
+
 
 export default Home;

@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../pages/firebaseconfig";
-import { db, storage } from "../pages/firebaseconfig";
+import { db } from "../pages/firebaseconfig";
 import { collection, addDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-const MAX_IMAGE_SIZE = 500 * 1024;
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 
 const AddPetForm = () => {
   const navigate = useNavigate();
@@ -19,18 +19,19 @@ const AddPetForm = () => {
     requirements: "",
     type: "dog",
     imageFile: null,
-    imageBase64: "",
+    imageUrl: "",
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const personalityTraits = [
     "Friendly", "Shy", "Energetic", "Calm", "Playful",
     "Independent", "Affectionate", "Intelligent", "Loyal"
   ];
 
-  const petTypes = ["dog", "cat", "bunny", "snake", "duck", "chick"];
+  const petTypes = ["dogs", "cats", "bunnies", "snakes", "ducks", "chicks"];
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -46,87 +47,97 @@ const AddPetForm = () => {
     });
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-const handleFileChange = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  if (file.size > MAX_IMAGE_SIZE) {
-    setError("Image must be smaller than 500KB");
-    return;
-  }
-
-  try {
-    // Compress the image
-    const compressedFile = await imageCompression(file, {
-      maxSizeMB: 0.5, 
-      maxWidthOrHeight: 800,
-      useWebWorker: true,
-    });
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormData((prev) => ({
-        ...prev,
-        imageFile: compressedFile,
-        imageBase64: reader.result.split(",")[1],
-      }));
-    };
-
-    reader.readAsDataURL(compressedFile);
-  } catch (err) {
-    setError("Failed to compress image");
-  }
-};
-
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setError("");
-
-  try {
-    let imageUrl = `/${formData.type}-default.jpg`;
-
-    // Submit Base64 string to backend or API
-    if (formData.imageBase64) {
-      const response = await fetch("/upload-endpoint", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base64Image: formData.imageBase64 }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Image upload failed");
-      }
-
-      const { url } = await response.json();
-      imageUrl = url;
+    if (!file.type.match('image.*')) {
+      setError("Please select an image file (JPEG, PNG)");
+      return;
     }
 
-    const petData = {
-      name: formData.name,
-      breed: formData.breed,
-      age: formData.age,
-      gender: formData.gender,
-      description: formData.description,
-      personality: formData.personality,
-      requirements: formData.requirements,
-      type: formData.type,
-      imageUrl,
-      rehomerId: auth.currentUser.uid,
-      rehomerName: auth.currentUser.displayName || "Anonymous",
-      createdAt: new Date(),
-      adopted: false,
-    };
+    if (file.size > MAX_IMAGE_SIZE) {
+      setError("Image must be smaller than 5MB");
+      return;
+    }
 
-    await addDoc(collection(db, "pets"), petData);
-    navigate("/rehomer-dashboard");
-  } catch (err) {
-    setError(`Failed to submit the form: ${err.message}`);
-  } finally {
-    setLoading(false);
-  }
-};
+    setFormData(prev => ({ 
+      ...prev, 
+      imageFile: file,
+      imageUrl: URL.createObjectURL(file)
+    }));
+    setError("");
+  };
+
+  const uploadImageToCloudinary = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', 'pets_presets'); 
+    formData.append('cloud_name', 'dgdf0svqx')
+    
+    try {
+      setUploadingImage(true);
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/dgdf0svqx/image/upload`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data.secure_url;
+    } catch (error) {
+      console.error('Cloudinary upload error:', error);
+      throw new Error('Image upload failed. Please try again.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      let imageUrl = "";
+
+      if (formData.imageFile) {
+        imageUrl = await uploadImageToCloudinary(formData.imageFile);
+      } else {
+        // Fallback to default image
+        imageUrl = `https://res.cloudinary.com/dgdf0svqx/image/upload/v1712345678/default-${formData.type}.jpg`;
+      }
+
+      const petData = {
+        name: formData.name,
+        breed: formData.breed,
+        age: formData.age,
+        gender: formData.gender,
+        description: formData.description,
+        personality: formData.personality,
+        requirements: formData.requirements,
+        type: formData.type,
+        imageUrl,
+        rehomerId: auth.currentUser.uid,
+        rehomerName: auth.currentUser.displayName || "Anonymous",
+        createdAt: new Date(),
+        adopted: false,
+      };
+
+      await addDoc(collection(db, "pets"), petData);
+      navigate("/rehomer-dashboard");
+    } catch (err) {
+      setError(`Failed to submit the form: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto p-6 bg-white rounded-lg shadow-md mt-10">
@@ -136,21 +147,28 @@ const handleSubmit = async (e) => {
 
         {/* Image Upload */}
         <div>
-          <label className="block font-medium mb-1">Pet Image (Max 500KB, JPEG/PNG)</label>
+          <label className="block font-medium mb-1">Pet Image (Max 5MB, JPEG/PNG)</label>
           <input
             type="file"
             onChange={handleFileChange}
             accept="image/*"
-            className="block"
+            className="block w-full text-sm text-gray-500
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-sm file:font-semibold
+              file:bg-blue-50 file:text-blue-700
+              hover:file:bg-blue-100"
           />
-          {formData.imageBase64 && (
-            <div className="mt-2">
+          {formData.imageUrl && (
+            <div className="mt-4">
               <img
-                src={`data:image/jpeg;base64,${formData.imageBase64}`}
-                alt="Preview"
-                className="w-32 h-32 object-cover border rounded"
+                src={formData.imageUrl}
+                alt="Pet preview"
+               className="max-w-xs max-h-64 object-contain rounded-lg border border-gray-200"
               />
-              <p className="text-sm text-gray-600 mt-1">Image ready for upload</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {uploadingImage ? "Uploading image to Cloudinary..." : "Ready to upload"}
+              </p>
             </div>
           )}
         </div>
@@ -261,18 +279,16 @@ const handleSubmit = async (e) => {
 
         <button
           type="submit"
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded w-full"
+          disabled={loading || uploadingImage}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded w-full disabled:bg-blue-300"
         >
           {loading ? "Adding Pet..." : "Add Pet"}
+          {uploadingImage && " (Uploading Image...)"}
         </button>
       </form>
     </div>
   );
 };
-
-
-
 const styles = {
   container: {
     maxWidth: "800px",

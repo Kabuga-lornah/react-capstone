@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./pages/AuthContext";
 import { auth } from "./pages/firebaseconfig"; 
+import { PetPouchContext } from './pages/PetPouchContext';
+
+
 
 const Navbar = () => {
   const { user, userData, isRehomer } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginOptions, setShowLoginOptions] = useState(false);
-  const [petPouchCount, setPetPouchCount] = useState(0);
+  // const [petPouchCount, setPetPouchCount] = useState(0);
   const navigate = useNavigate();
+  const { petPouchCount } = useContext(PetPouchContext);
 
-  useEffect(() => {
-    // Initialize pet pouch count from localStorage
-    const count = localStorage.getItem('petPouchCount') || 0;
-    setPetPouchCount(Number(count));
-  }, []);
+ 
 
   const handleLogout = async () => {
     await auth.signOut();
@@ -24,6 +24,7 @@ const Navbar = () => {
 
   return (
     <nav className="navbar">
+      
       <div className="nav-container">
         <Link to="/" className="logo">My FurryFriends</Link>
         
@@ -32,12 +33,14 @@ const Navbar = () => {
           <Link to="/pets" className="nav-link">Browse Pets</Link>
           <Link to="/quiz" className="nav-link">Quiz</Link>
           <Link to="/blog" className="nav-link">Blog</Link>
-          <Link to="/contact" className="nav-link">Contact Us</Link>
+          <Link to="/my-listing" className="nav-link">My Listings</Link>
           {user && (
             <Link to="/pet-pouch" className="nav-link">
-              Pet Pouch {petPouchCount > 0 ? `(${petPouchCount})` : ''}
+              <div>Pet Pouch: {petPouchCount}</div>
             </Link>
+            
           )}
+           <Link to="/contact" className="nav-link">Contact Us</Link>
         </div>
 
         <div className="auth-section">

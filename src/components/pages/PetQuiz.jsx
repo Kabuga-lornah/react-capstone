@@ -101,302 +101,302 @@ const PetQuiz = () => {
         const hardcodedPets = [
           {
             id: "dog1",
-              name: "Buddy",
-              breed: "Labrador",
-              age: "2 years",
-              personality: ["Friendly", "Playful"],
-              imageUrl: "/Labrador.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog2",
-              name: "Max",
-              breed: "Beagle",
-              age: "3 years",
-              personality: ["Energetic", "Loyal"],
-              imageUrl: "/beagle.jpg",
-              type: "dog",
-            },
-            {
-              id: "dog3",
-              name: "Charlie",
-              breed: "Golden Retriever",
-              age: "4 years",
-              personality: ["Affectionate", "Friendly"],
-              imageUrl: "/golden retriver.jpg",
-              type: "dog",
-            },
-            {
-              id: "dog4",
-              name: "Daisy",
-              breed: "Poodle",
-              age: "1 year",
-              personality: ["Intelligent", "Shy"],
-              imageUrl: "/poodle.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog5",
-              name: "Bella",
-              breed: "Bulldog",
-              age: "2.5 years",
-              personality: ["Calm", "Loyal"],
-              imageUrl: "/bulldog.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog6",
-              name: "Rocky",
-              breed: "Rottweiler",
-              age: "3.5 years",
-              personality: ["Independent", "Friendly"],
-              imageUrl: "/Rottweiler.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog7",
-              name: "Lucy",
-              breed: "Shih Tzu",
-              age: "2 years",
-              personality: ["Playful", "Shy"],
-              imageUrl: "/shih tzu.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog8",
-              name: "zeus",
-              breed: "German Shepherd",
-              age: "4 years",
-              personality: ["Loyal", "Intelligent"],
-              imageUrl: "/zeus.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog9",
-              name: "Ruby",
-              breed: "Boxer",
-              age: "1.5 years",
-              personality: ["Energetic", "Affectionate"],
-              imageUrl: "/beagle.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog10",
-              name: "Bailey",
-              breed: "Chihuahua",
-              age: "3 years",
-              personality: ["Friendly", "Calm"],
-              imageUrl: "/chihuahua.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog11",
-              name: "Coco",
-              breed: "Golden Retriver",
-              age: "1 year",
-              personality: ["Independent", "Playful"],
-              imageUrl: "/3 yrs golden retriver.jpeg",
-              type: "dog",
-            },
-            {
-              id: "dog12",
-              name: "Toby",
-              breed: "Doberman",
-              age: "2.5 years",
-              personality: ["Energetic", "Loyal"],
-              imageUrl: "/Dobermann.jpeg",
-              type: "dog",
-            },
-  
-            // Cats (8)
-            {
-              id: "cat1",
-              name: "Whiskers",
-              breed: "Persian",
-              age: "3 years",
-              personality: ["Calm", "Independent"],
-              imageUrl: "/persian.jpeg",
-              type: "cat",
-            },
-            {
-              id: "cat2",
-              name: "Luna",
-              breed: "Siamese",
-              age: "2 years",
-              personality: ["Affectionate", "Intelligent"],
-              imageUrl: "/siames 2.jpeg",
-              type: "cat",
-            },
-            {
-              id: "cat3",
-              name: "Mittens",
-              breed: "Maine Coon",
-              age: "4 years",
-              personality: ["Loyal", "Shy"],
-              imageUrl: "/cat3.jpg",
-              type: "cat",
-            },
-            {
-              id: "cat4",
-              name: "Shadow",
-              breed: "Bengal",
-              age: "1.5 years",
-              personality: ["Playful", "Energetic"],
-              imageUrl: "/bengal.jpeg",
-              type: "cat",
-            },
-            {
-              id: "cat5",
-              name: "Simba",
-              breed: "Abyssinian",
-              age: "3 years",
-              personality: ["Intelligent", "Friendly"],
-              imageUrl: "/Abyssinian.jpeg",
-              type: "cat",
-            },
-            {
-              id: "cat6",
-              name: "Zoe",
-              breed: "Russian Blue",
-              age: "2 years",
-              personality: ["Shy", "Calm"],
-              imageUrl: "/russian blue.jpeg",
-              type: "cat",
-            },
-            {
-              id: "cat7",
-              name: "Nala",
-              breed: "British Shorthair",
-              age: "2.8 years",
-              personality: ["Loyal", "Independent"],
-              imageUrl: "/british shorthair.jpeg",
-              type: "cat",
-            },
-            {
-              id: "cat8",
-              name: "Tiger",
-              breed: "Tabby",
-              age: "3.5 years",
-              personality: ["Playful", "Affectionate"],
-              imageUrl: "/cat8.jpg",
-              type: "cat",
-            },
-  
-            // Snakes (2)
-            {
-              id: "snake1",
-              name: "Slither",
-              breed: "Corn Snake",
-              age: "2 years",
-              personality: ["Calm", "Shy"],
-              imageUrl: "/snake.jpg",
-              type: "snake",
-            },
-            {
-              id: "snake2",
-              name: "Fang",
-              breed: "Ball Python",
-              age: "3 years",
-              personality: ["Independent", "Calm"],
-              imageUrl: "/snake2.jpg",
-              type: "snake",
-            },
-  
-            // Bunnies (5)
-            {
-              id: "bunny1",
-              name: "Thumper",
-              breed: "Mini Lop",
-              age: "1 year",
-              personality: ["Friendly", "Playful"],
-              imageUrl: "/.jpg",
-              type: "bunny",
-            },
-            {
-              id: "bunny2",
-              name: "Snowball",
-              breed: "Angora",
-              age: "1.5 years",
-              personality: ["Shy", "Affectionate"],
-              imageUrl: "/bunny2.jpg",
-              type: "bunny",
-            },
-            {
-              id: "bunny3",
-              name: "Fluffy",
-              breed: "Lionhead",
-              age: "2 years",
-              personality: ["Energetic", "Playful"],
-              imageUrl: "/bunny3.jpg",
-              type: "bunny",
-            },
-            {
-              id: "bunny4",
-              name: "Clover",
-              breed: "Dutch",
-              age: "2.2 years",
-              personality: ["Independent", "Calm"],
-              imageUrl: "/bunny4.jpg",
-              type: "bunny",
-            },
-            {
-              id: "bunny5",
-              name: "Binky",
-              breed: "Rex",
-              age: "1.8 years",
-              personality: ["Loyal", "Friendly"],
-              imageUrl: "/bunny5.jpg",
-              type: "bunny",
-            },
-  
-            // Ducks (3)
-            {
-              id: "duck1",
-              name: "Quackers",
-              breed: "Parrot",
-              age: "4 years",
-              personality: ["Talkative and bright"],
-              imageUrl: "/duck.jpeg",
-              type: "duck",
-            },
-            {
-              id: "duck2",
-              name: "Feathers",
-              breed: "Mallard",
-              age: "2 years",
-              personality: ["Friendly", "Playful"],
-              imageUrl: "/duck2.jpg",
-              type: "duck",
-            },
-            {
-              id: "duck3",
-              name: "Daffy",
-              breed: "Pekin",
-              age: "3 years",
-              personality: ["Calm", "Affectionate"],
-              imageUrl: "/duck3.jpg",
-              type: "duck",
-            },
-  
-            // Chicks (2)
-            {
-              id: "chick1",
-              name: "Sunny",
-              breed: "Silkie",
-              age: "0.5 years",
-              personality: ["Energetic", "Friendly"],
-              imageUrl: "/chick1.jpg",
-              type: "chick",
-            },
-            {
-              id: "chick2",
-              name: "Peep",
-              breed: "Bantam",
-              age: "0.4 years",
-              personality: ["Shy", "Playful"],
-              imageUrl: "/chick2.jpg",
-              type: "chick",
-            }
+            name: "Buddy",
+            breed: "Labrador",
+            age: "2 years",
+            personality: ["Friendly", "Playful"],
+            imageUrl: "/3 yrs golden retriver.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog2",
+            name: "Max",
+            breed: "Beagle",
+            age: "3 years",
+            personality: ["Energetic", "Loyal"],
+            imageUrl: "/beagle.jpg",
+            type: "dog",
+          },
+          {
+            id: "dog3",
+            name: "Charlie",
+            breed: "Golden Retriever",
+            age: "4 years",
+            personality: ["Affectionate", "Friendly"],
+            imageUrl: "/golden retriver.jpg",
+            type: "dog",
+          },
+          {
+            id: "dog4",
+            name: "Daisy",
+            breed: "Poodle",
+            age: "1 year",
+            personality: ["Intelligent", "Shy"],
+            imageUrl: "/poodle.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog5",
+            name: "Bella",
+            breed: "Bulldog",
+            age: "2.5 years",
+            personality: ["Calm", "Loyal"],
+            imageUrl: "/bulldog.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog6",
+            name: "Rocky",
+            breed: "Rottweiler",
+            age: "3.5 years",
+            personality: ["Independent", "Friendly"],
+            imageUrl: "/Rottweiler.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog7",
+            name: "Lucy",
+            breed: "Shih Tzu",
+            age: "2 years",
+            personality: ["Playful", "Shy"],
+            imageUrl: "/shih tzu.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog8",
+            name: "zeus",
+            breed: "German Shepherd",
+            age: "4 years",
+            personality: ["Loyal", "Intelligent"],
+            imageUrl: "/zeus.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog9",
+            name: "Ruby",
+            breed: "Boxer",
+            age: "1.5 years",
+            personality: ["Energetic", "Affectionate"],
+            imageUrl: "/beagle.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog10",
+            name: "Bailey",
+            breed: "Chihuahua",
+            age: "3 years",
+            personality: ["Friendly", "Calm"],
+            imageUrl: "/chihuahua.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog11",
+            name: "Coco",
+            breed: "Golden Retriver",
+            age: "1 year",
+            personality: ["Independent", "Playful"],
+            imageUrl: "/3 yrs golden retriver.jpeg",
+            type: "dog",
+          },
+          {
+            id: "dog12",
+            name: "Toby",
+            breed: "Doberman",
+            age: "2.5 years",
+            personality: ["Energetic", "Loyal"],
+            imageUrl: "/Dobermann.jpeg",
+            type: "dog",
+          },
+
+          // Cats (8)
+          {
+            id: "cat1",
+            name: "Whiskers",
+            breed: "Persian",
+            age: "3 years",
+            personality: ["Calm", "Independent"],
+            imageUrl: "/persian.jpeg",
+            type: "cat",
+          },
+          {
+            id: "cat2",
+            name: "Luna",
+            breed: "Siamese",
+            age: "2 years",
+            personality: ["Affectionate", "Intelligent"],
+            imageUrl: "/siames 2.jpeg",
+            type: "cat",
+          },
+          {
+            id: "cat3",
+            name: "Mittens",
+            breed: "Maine Coon",
+            age: "4 years",
+            personality: ["Loyal", "Shy"],
+            imageUrl: "/maine coon.jpg",
+            type: "cat",
+          },
+          {
+            id: "cat4",
+            name: "Shadow",
+            breed: "Bengal",
+            age: "1.5 years",
+            personality: ["Playful", "Energetic"],
+            imageUrl: "/bengal.jpeg",
+            type: "cat",
+          },
+          {
+            id: "cat5",
+            name: "Simba",
+            breed: "Abyssinian",
+            age: "3 years",
+            personality: ["Intelligent", "Friendly"],
+            imageUrl: "/Abyssinian.jpeg",
+            type: "cat",
+          },
+          {
+            id: "cat6",
+            name: "Zoe",
+            breed: "Russian Blue",
+            age: "2 years",
+            personality: ["Shy", "Calm"],
+            imageUrl: "/russian blue.jpeg",
+            type: "cat",
+          },
+          {
+            id: "cat7",
+            name: "Nala",
+            breed: "British Shorthair",
+            age: "2.8 years",
+            personality: ["Loyal", "Independent"],
+            imageUrl: "/british shorthair.jpeg",
+            type: "cat",
+          },
+          {
+            id: "cat8",
+            name: "Tiger",
+            breed: "Tabby",
+            age: "3.5 years",
+            personality: ["Playful", "Affectionate"],
+            imageUrl: "/tabby cat.jpg",
+            type: "cat",
+          },
+
+          // Snakes (2)
+          {
+            id: "snake1",
+            name: "Slither",
+            breed: "Corn Snake",
+            age: "2 years",
+            personality: ["Calm", "Shy"],
+            imageUrl: "/snake.jpg",
+            type: "snake",
+          },
+          {
+            id: "snake2",
+            name: "Fang",
+            breed: "Ball Python",
+            age: "3 years",
+            personality: ["Independent", "Calm"],
+            imageUrl: "/ball python.jpg",
+            type: "snake",
+          },
+
+          // Bunnies (5)
+          {
+            id: "bunny1",
+            name: "Thumper",
+            breed: "Mini Lop",
+            age: "1 year",
+            personality: ["Friendly", "Playful"],
+            imageUrl: "/mini lop.jpg",
+            type: "bunny",
+          },
+          {
+            id: "bunny2",
+            name: "Snowball",
+            breed: "Angora",
+            age: "1.5 years",
+            personality: ["Shy", "Affectionate"],
+            imageUrl: "/Angora bunny.jpg",
+            type: "bunny",
+          },
+          {
+            id: "bunny3",
+            name: "Fluffy",
+            breed: "Lionhead",
+            age: "2 years",
+            personality: ["Energetic", "Playful"],
+            imageUrl: "/LionBunny.jpg",
+            type: "bunny",
+          },
+          {
+            id: "bunny4",
+            name: "Clover",
+            breed: "Dutch",
+            age: "2.2 years",
+            personality: ["Independent", "Calm"],
+            imageUrl: "/dutch bunny.jpg",
+            type: "bunny",
+          },
+          {
+            id: "bunny5",
+            name: "Binky",
+            breed: "Rex",
+            age: "1.8 years",
+            personality: ["Loyal", "Friendly"],
+            imageUrl: "/rex bunny.jpg",
+            type: "bunny",
+          },
+
+          // Ducks (3)
+          {
+            id: "duck1",
+            name: "Quackers",
+            breed: "Parrot",
+            age: "4 years",
+            personality: ["Talkative and bright"],
+            imageUrl: "/duck.jpeg",
+            type: "duck",
+          },
+          {
+            id: "duck2",
+            name: "Feathers",
+            breed: "Mallard",
+            age: "2 years",
+            personality: ["Friendly", "Playful"],
+            imageUrl: "/mallard.jpg",
+            type: "duck",
+          },
+          {
+            id: "duck3",
+            name: "Daffy",
+            breed: "Pekin",
+            age: "3 years",
+            personality: ["Calm", "Affectionate"],
+            imageUrl: "/pekin.jpg",
+            type: "duck",
+          },
+
+          // Chicks (2)
+          {
+            id: "chick1",
+            name: "Sunny",
+            breed: "Silkie",
+            age: "0.5 years",
+            personality: ["Energetic", "Friendly"],
+            imageUrl: "/silkie.jpg",
+            type: "chick",
+          },
+          {
+            id: "chick2",
+            name: "Peep",
+            breed: "Bantam",
+            age: "0.4 years",
+            personality: ["Shy", "Playful"],
+            imageUrl: "/bantam.jpg",
+            type: "chick",
+          },
         ];
 
         setAvailablePets([...petsData, ...hardcodedPets]);
@@ -444,24 +444,24 @@ const PetQuiz = () => {
     try {
       const allAnswers = Object.values(answers);
       const traits = allAnswers.flatMap(answer => personalityMatches[answer] || []);
-
+  
       const traitCounts = traits.reduce((acc, trait) => {
         acc[trait] = (acc[trait] || 0) + 1;
         return acc;
       }, {});
-
+  
       // Get top traits (minimum 3, maximum 5)
       let topTraits = Object.entries(traitCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
         .map(item => item[0]);
-
+  
       // Ensure we have at least 3 traits
       while (topTraits.length < 3) {
         const remainingTraits = personalityMatches[options[currentQuestion][0]].filter(t => !topTraits.includes(t));
         topTraits.push(...remainingTraits.slice(0, 3 - topTraits.length));
       }
-
+  
       // More flexible matching
       const petsWithScores = availablePets.map(pet => {
         let score = 0;
@@ -473,44 +473,113 @@ const PetQuiz = () => {
             matchedTraits.push(trait);
           }
         });
-
+  
         // Bonus for multiple matches
         if (matchedTraits.length > 1) {
           score += matchedTraits.length * 5;
         }
-
+  
         const percentage = Math.min(Math.round((score / (traits.length * 3)) * 100), 100);
         
         return { 
           ...pet, 
           matchPercentage: percentage > 25 ? percentage : 25 + Math.floor(Math.random() * 25),
-          matchedTraits 
+          matchedTraits,
+          rawScore: score // Store the raw score for normalization
         };
       });
+  
+     // Get top 3 matches with at least one matching trait
+     let topMatches = petsWithScores
+     .filter(pet => pet.matchedTraits.length > 0)
+     .sort((a, b) => b.rawScore - a.rawScore)
+     .slice(0, 3);
 
-      // Get top 3 matches with at least one matching trait
-      let topMatches = petsWithScores
-        .filter(pet => pet.matchedTraits.length > 0)
-        .sort((a, b) => b.matchPercentage - a.matchPercentage)
-        .slice(0, 3);
+   // Fallback to random pets if no matches (same as before)
+   if (topMatches.length === 0) {
+     const shuffled = [...availablePets].sort(() => 0.5 - Math.random());
+     topMatches = shuffled.slice(0, 3).map(pet => ({
+       ...pet,
+       matchPercentage: 25 + Math.floor(Math.random() * 25),
+       matchedTraits: pet.personality.slice(0, 2),
+       rawScore: 25 + Math.floor(Math.random() * 25)
+     }));
+   }
 
-      // Fallback to random pets if no matches
-      if (topMatches.length === 0) {
-        const shuffled = [...availablePets].sort(() => 0.5 - Math.random());
-        topMatches = shuffled.slice(0, 3).map(pet => ({
-          ...pet,
-          matchPercentage: 25 + Math.floor(Math.random() * 25),
-          matchedTraits: pet.personality.slice(0, 2)
-        }));
-      }
+   // Apply exponential scaling to create wider gaps
+   const scaledScores = topMatches.map((pet, index) => {
+     // The higher the rank, the more we boost the score
+     const rankBoost = Math.pow(1.5, 2 - index); // 1.5^2 for 1st, 1.5^1 for 2nd, 1.5^0 for 3rd
+     return {
+       ...pet,
+       scaledScore: pet.rawScore * rankBoost
+     };
+   });
 
-      setResult(topMatches);
+   // Calculate total scaled score for normalization
+   const totalScaledScore = scaledScores.reduce((sum, pet) => sum + pet.scaledScore, 0);
 
+   // Normalize percentages to sum to 100% with wider gaps
+   let normalizedMatches = scaledScores.map(pet => ({
+     ...pet,
+     matchPercentage: Math.round((pet.scaledScore / totalScaledScore) * 100)
+   }));
+
+   // Ensure minimum gap of at least 10% between 1st and 2nd place
+   if (normalizedMatches.length > 1 && 
+       normalizedMatches[0].matchPercentage - normalizedMatches[1].matchPercentage < 10) {
+     const gap = 10;
+     const totalToRedistribute = gap - (normalizedMatches[0].matchPercentage - normalizedMatches[1].matchPercentage);
+     
+     // Take points from lower matches to increase the gap
+     normalizedMatches[0].matchPercentage += Math.ceil(totalToRedistribute * 0.7);
+     normalizedMatches[1].matchPercentage -= Math.ceil(totalToRedistribute * 0.3);
+     
+     // Ensure we don't go below 5% for the lowest match
+     if (normalizedMatches.length > 2 && normalizedMatches[2].matchPercentage < 5) {
+       normalizedMatches[2].matchPercentage = 5;
+     }
+   }
+
+   // Final adjustment to ensure sum is exactly 100
+   const sum = normalizedMatches.reduce((s, pet) => s + pet.matchPercentage, 0);
+   if (sum !== 100) {
+     normalizedMatches[normalizedMatches.length - 1].matchPercentage += (100 - sum);
+     // Ensure we don't go negative
+     if (normalizedMatches[normalizedMatches.length - 1].matchPercentage < 0) {
+       normalizedMatches[normalizedMatches.length - 1].matchPercentage = 0;
+       // Redistribute the difference to other matches
+       const remaining = 100 - normalizedMatches.reduce((s, pet) => s + pet.matchPercentage, 0);
+       normalizedMatches[0].matchPercentage += remaining;
+     }
+   }
+
+   // Ensure the 1st place is always significantly higher
+   if (normalizedMatches.length > 1 && normalizedMatches[0].matchPercentage < 50) {
+     const boost = 50 - normalizedMatches[0].matchPercentage;
+     normalizedMatches[0].matchPercentage += boost;
+     normalizedMatches[1].matchPercentage -= Math.ceil(boost * 0.5);
+     normalizedMatches[2].matchPercentage -= Math.ceil(boost * 0.5);
+     
+     // Ensure no negative percentages
+     normalizedMatches.forEach(pet => {
+       if (pet.matchPercentage < 5) pet.matchPercentage = 5;
+     });
+     
+     // Rebalance if needed
+     const newSum = normalizedMatches.reduce((s, pet) => s + pet.matchPercentage, 0);
+     if (newSum !== 100) {
+       normalizedMatches[0].matchPercentage += (100 - newSum);
+     }
+   }
+
+   setResult(normalizedMatches);
+  
       if (user) {
         await addDoc(collection(db, "quizResults"), {
           userId: user.uid,
           answers: allAnswers,
-          matchedPets: topMatches.map(pet => ({
+          matchedPets: normalizedMatches.map(pet => ({
             petId: pet.id,
             matchPercentage: pet.matchPercentage,
             matchedTraits: pet.matchedTraits
@@ -518,13 +587,13 @@ const PetQuiz = () => {
           createdAt: new Date()
         });
       }
-
+  
       // Navigate to filtered pets list after showing results
       setTimeout(() => {
         const traitsToFilter = topTraits.slice(0, 3);
         navigate(`/pets?traits=${traitsToFilter.join(',')}&fromQuiz=true`);
-      }, 5000000);
-
+      }, 5000000000);
+  
     } catch (error) {
       console.error("Error calculating results:", error);
       setError("Failed to calculate results. Please try again.");
@@ -676,7 +745,7 @@ const PetQuiz = () => {
       ) : (
         <div className="text-center space-y-8">
           <h2 className="text-3xl font-bold text-orange-500">
-            {result[0].matchPercentage >= 50 ? "Your Perfect Matches!" : "Pets You Might Like"}
+            {result[0].matchPercentage >= 50 ? "Your Paw-tners in Crime!" : "Pets You Might Like"}
           </h2>
           
           {result[0].matchPercentage < 30 && (
@@ -687,7 +756,7 @@ const PetQuiz = () => {
           )}
 
           <p className="text-gray-600">
-            We'll redirect you to matching pets in a moment...
+            {/* We'll redirect you to matching pets in a moment... */}
           </p>
           
           <div className="space-y-6">
