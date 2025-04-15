@@ -34,7 +34,7 @@ const Home = () => {
       });
 
       setAdoptedPets([...adoptedPets, pet.id]);
-      // alert(`${pet.name} has been added to your Pet Pouch!`);
+     
     } catch (error) {
       console.error("Error adding to pet pouch:", error);
       alert("Failed to add pet to pouch. Please try again.");
@@ -204,7 +204,7 @@ const Home = () => {
     petImage: {
       width: "100%",
       height: "180px",
-      objectFit: "contain",
+      objectFit: "cover",
       borderRadius: "8px",
       marginBottom: "10px",
     }, 
