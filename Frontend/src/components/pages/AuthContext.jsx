@@ -1,66 +1,114 @@
-// src/components/pages/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { auth } from "./firebaseconfig"; // Ensure the path to firebaseconfig.js is correct
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "./firebaseconfig"; // Ensure the path to firebaseconfig.js is correct
+import {
+  clearTokens,
+  getAccessToken,
+  getCurrentUser,
+  setTokens,
+} from "../../services/api";
 
-// Create AuthContext
 const AuthContext = createContext();
 
-// AuthProvider Component
+const getDisplayName = (profile) => {
+  const fullName = `${profile.first_name || ""} ${profile.last_name || ""}`.trim();
+  return fullName || profile.username || profile.email || "User";
+};
+
+const getUserType = (role) => {
+  if (role === "rehomer") {
+    return "rehomer";
+  }
+
+  if (role === "shelter_admin") {
+    return "shelter";
+  }
+
+  return "user";
+};
+
+const buildCurrentUser = (profile) => ({
+  uid: String(profile.id),
+  id: profile.id,
+  email: profile.email,
+  username: profile.username,
+  displayName: getDisplayName(profile),
+  role: profile.role,
+  firstName: profile.first_name || "",
+  lastName: profile.last_name || "",
+});
+
+const buildUserData = (profile) => ({
+  ...profile,
+  displayName: getDisplayName(profile),
+  isRehomer: profile.role === "rehomer",
+  userType: getUserType(profile.role),
+});
+
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Handle Firebase Auth State
+  const applyProfile = (profile) => {
+    setCurrentUser(buildCurrentUser(profile));
+    setUserData(buildUserData(profile));
+  };
+
+  const setAuthenticatedUser = (profile, tokens) => {
+    if (tokens?.access && tokens?.refresh) {
+      setTokens(tokens.access, tokens.refresh);
+    }
+
+    applyProfile(profile);
+  };
+
+  const logout = () => {
+    clearTokens();
+    setCurrentUser(null);
+    setUserData(null);
+  };
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          // Fetch user data from Firestore
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          if (userDoc.exists()) {
-            setUserData({
-              ...userDoc.data(),
-              isRehomer: userDoc.data().isRehomer || false, // Handle missing isRehomer field
-            });
-          } else {
-            setUserData(null);
-          }
-          setCurrentUser(user);
-        } catch (error) {
-          console.error("Error fetching user data:", error);
-        }
-      } else {
+    const restoreSession = async () => {
+      const accessToken = getAccessToken();
+
+      if (!accessToken) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const profile = await getCurrentUser();
+        applyProfile(profile);
+      } catch (error) {
+        console.error("Error restoring auth session:", error);
+        clearTokens();
         setCurrentUser(null);
         setUserData(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
 
-    // Clean up subscription
-    return unsubscribe;
+    restoreSession();
   }, []);
 
-  // Context value
   const value = {
     user: currentUser,
     userData,
     loading,
-    isRehomer: () => userData?.isRehomer === true, // Helper function for rehomer
-    isRegularUser: () => !userData?.isRehomer, // Helper function for regular user
+    setAuthenticatedUser,
+    logout,
+    isRehomer: () => userData?.isRehomer === true,
+    isRegularUser: () => userData?.isRehomer !== true,
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children} {/* Render children only after loading */}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };
 
-// useAuth Hook
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

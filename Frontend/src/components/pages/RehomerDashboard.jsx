@@ -1,208 +1,221 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { auth } from "../pages/firebaseconfig";
 import {
-  collection,
-  query,
-  where,
-  getDocs,
-  getDoc,
-  doc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  addDoc,
-  orderBy,
-} from "firebase/firestore";
-import { db } from "../pages/firebaseconfig";
-import { useAuthState } from "react-firebase-hooks/auth";
+  approveApplication,
+  deletePet,
+  getAccessToken,
+  listMyPets,
+  listReceivedApplications,
+  rejectApplication,
+} from "../../services/api";
+import { useAuth } from "./AuthContext";
+
+const toTitleCase = (value) =>
+  value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
+
+const getPetImageUrl = (pet) => {
+  const mainImage = pet.images?.find((image) => image.is_main);
+  const fallbackImage = pet.images?.[0];
+
+  return (
+    pet.imageUrl ||
+    pet.image_url ||
+    mainImage?.image_url ||
+    fallbackImage?.image_url ||
+    mainImage?.image ||
+    fallbackImage?.image ||
+    "/default-pet.jpg"
+  );
+};
+
+const normalizePet = (pet) => ({
+  ...pet,
+  id: String(pet.id),
+  type: pet.type || pet.species || "other",
+  personality: Array.isArray(pet.personality)
+    ? pet.personality
+    : Array.isArray(pet.personality_traits)
+      ? pet.personality_traits.map((trait) => toTitleCase(String(trait)))
+      : [],
+  imageUrl: getPetImageUrl(pet),
+  adopted:
+    pet.adopted !== undefined
+      ? pet.adopted
+      : pet.status
+        ? pet.status !== "available"
+        : false,
+});
+
+const normalizeApplication = (application) => {
+  const applicant = application.applicant || {};
+  const pet = normalizePet(application.pet || {});
+  const applicantName = `${applicant.first_name || ""} ${applicant.last_name || ""}`.trim();
+
+  return {
+    ...application,
+    id: String(application.id),
+    petId: pet.id,
+    petName: pet.name || "Unnamed Pet",
+    petImageUrl: pet.imageUrl || "/default-pet.jpg",
+    userName: applicantName || applicant.username || applicant.email || "Anonymous",
+    userEmail: applicant.email || "No email",
+    userPhone: applicant.phone_number || "No phone",
+    visitDate: application.preferred_visit_date || "",
+    message: application.message || `Interested in adopting ${pet.name || "this pet"}`,
+    status: application.status || "pending",
+  };
+};
 
 const RehomerDashboard = () => {
   const navigate = useNavigate();
+  const { userData, loading: authLoading } = useAuth();
   const [pets, setPets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState([]);
   const [showRequests, setShowRequests] = useState(false);
-  const [user] = useAuthState(auth);
-  const [error, setError] = useState(null); // ADD THIS LINE
-  const [success, setSuccess] = useState(null); // ADD THIS LINE
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const petQuotes = [
-    "Helping pets find their 'fur-ever' homes, one adoption at a time!",
+    "Helping pets find their fur-ever homes, one adoption at a time!",
     "Remember: You're not just rehoming pets, you're matchmaking for life!",
     "Pro tip: The best way to keep a pet is to put it in your heart, not your pocket.",
-    "Did you know? Dogs have owners, cats have staff... and you're the HR department!",
+    "Did you know? Dogs have owners, cats have staff, and you're the HR department!",
     "Warning: Rehoming pets may cause spontaneous smiles and warm fuzzies.",
     "You're doing a pawsome job! Every adoption creates two happy endings.",
   ];
+
   const [currentQuote] = useState(
-    petQuotes[Math.floor(Math.random() * petQuotes.length)]
+    petQuotes[Math.floor(Math.random() * petQuotes.length)],
   );
+
+  const hasToken = Boolean(getAccessToken());
+  const isAllowedRole = userData?.role === "rehomer" || userData?.role === "shelter_admin";
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!hasToken) {
+      navigate("/login/rehomer", { replace: true });
+    }
+  }, [authLoading, hasToken, navigate]);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (authLoading || !hasToken || !isAllowedRole) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        if (!user) return;
+        setError("");
+        const [petsResponse, applicationsResponse] = await Promise.all([
+          listMyPets(),
+          listReceivedApplications(),
+        ]);
 
-        const petsQuery = query(
-          collection(db, "pets"),
-          where("rehomerId", "==", user.uid)
-        );
-        const petsSnapshot = await getDocs(petsQuery);
-        const petsData = petsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setPets(petsData);
+        const petsData = Array.isArray(petsResponse) ? petsResponse : petsResponse?.results || [];
+        const applicationsData = Array.isArray(applicationsResponse)
+          ? applicationsResponse
+          : applicationsResponse?.results || [];
 
-        const requestsQuery = query(
-          collection(db, "adoptionRequests"),
-          where("rehomerId", "==", user.uid),
-          where("status", "==", "pending")
-        );
-        const requestsSnapshot = await getDocs(requestsQuery);
-        const requestsData = requestsSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            petId: data.petId || data.originalPetId,
-            petName: data.petName || "Unnamed Pet",
-            userName: data.userName || "Anonymous",
-            userEmail: data.userEmail || "No email",
-            userPhone: data.phoneNumber || data.userPhone || "No phone",
-            visitDate: data.visitDate,
-            message: data.message || `Interested in adopting ${data.petName}`,
-            petImageUrl: data.petImageUrl || "/default-pet.jpg",
-            status: data.status,
-            ...data,
-          };
-        });
-
-        setRequests(requestsData);
-      } catch (error) {
-        console.error("Error fetching data:", error);
+        setPets(petsData.map(normalizePet));
+        setRequests(applicationsData.map(normalizeApplication));
+      } catch (fetchError) {
+        console.error("Error fetching dashboard data:", fetchError);
+        setError(fetchError.message || "Failed to load your dashboard.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [user]);
+  }, [authLoading, hasToken, isAllowedRole]);
 
-  // Update the handleAdopt function in RehomerDashboard.jsx
-  const handleAdopt = async (petId, requestId) => {
+  const pendingRequests = useMemo(
+    () => requests.filter((request) => request.status === "pending"),
+    [requests],
+  );
+
+  const handleApprove = async (petId, requestId) => {
     try {
-      setError(null);
-      setSuccess(null);
+      setError("");
+      setSuccess("");
+      await approveApplication(requestId);
 
-      // Validate inputs
-      if (!petId || !requestId) {
-        throw new Error("Missing pet or request ID");
-      }
-
-      // Get request data
-      const requestRef = doc(db, "adoptionRequests", requestId);
-      const requestSnap = await getDoc(requestRef);
-
-      if (!requestSnap.exists()) {
-        throw new Error("Adoption request not found");
-      }
-
-      const requestData = requestSnap.data();
-
-      // Validate required fields
-      if (!requestData.userId) {
-        throw new Error("Adopter user ID missing in request");
-      }
-
-      if (!requestData.visitDate) {
-        throw new Error("Visit date missing in request");
-      }
-
-      // Handle visit date (could be Timestamp or string)
-      const visitDate = requestData.visitDate?.toDate
-        ? requestData.visitDate.toDate()
-        : new Date(requestData.visitDate);
-
-      // Update pet status
-      await updateDoc(doc(db, "pets", petId), {
-        adopted: true,
-        adoptedAt: new Date(),
-      });
-
-      // Update request status
-      await updateDoc(requestRef, {
-        status: "approved",
-        processedAt: new Date(),
-      });
-
-      // Create notification
-      await addDoc(collection(db, "notifications"), {
-        userId: requestData.userId,
-        type: "adoption_approved",
-        title: "Adoption Approved!",
-        message: `Your adoption request for ${requestData.petName} has been approved! The rehomer will visit you on ${visitDate.toLocaleDateString()}.`,
-        petId: petId,
-        petName: requestData.petName,
-        visitDate: visitDate,
-        read: false,
-        createdAt: new Date(),
-      });
-
-      // Reject other requests for this pet
-      const otherRequestsQuery = query(
-        collection(db, "adoptionRequests"),
-        where("petId", "==", petId),
-        where("status", "==", "pending")
+      setPets((prevPets) =>
+        prevPets.map((pet) =>
+          pet.id === petId ? { ...pet, adopted: true, status: "adopted" } : pet,
+        ),
       );
 
-      const otherRequests = await getDocs(otherRequestsQuery);
-      const rejectPromises = otherRequests.docs
-        .filter((doc) => doc.id !== requestId)
-        .map((doc) =>
-          updateDoc(doc.ref, {
-            status: "rejected",
-            processedAt: new Date(),
-          })
-        );
+      setRequests((prevRequests) =>
+        prevRequests.map((request) => {
+          if (request.id === requestId) {
+            return { ...request, status: "approved" };
+          }
 
-      await Promise.all(rejectPromises);
+          if (request.petId === petId && request.status === "pending") {
+            return { ...request, status: "rejected" };
+          }
 
-      // Update local state
-      setPets(
-        pets.map((pet) =>
-          pet.id === petId ? { ...pet, adopted: true } : pet
-        )
+          return request;
+        }),
       );
 
-      setRequests(
-        requests.map((req) =>
-          req.id === requestId
-            ? { ...req, status: "approved" }
-            : req.petId === petId
-            ? { ...req, status: "rejected" }
-            : req
-        )
+      setSuccess("Adoption approved successfully.");
+    } catch (approveError) {
+      console.error("Error approving application:", approveError);
+      setError(approveError.message || "Failed to approve adoption.");
+    }
+  };
+
+  const handleReject = async (requestId) => {
+    try {
+      setError("");
+      setSuccess("");
+      await rejectApplication(requestId);
+
+      setRequests((prevRequests) =>
+        prevRequests.map((request) =>
+          request.id === requestId ? { ...request, status: "rejected" } : request,
+        ),
       );
 
-      setSuccess(`Adoption approved successfully! Notification sent to adopter.`);
-    } catch (error) {
-      console.error("Error processing adoption:", error);
-      setError(`Failed to approve adoption: ${error.message}`);
+      setSuccess("Application rejected.");
+    } catch (rejectError) {
+      console.error("Error rejecting application:", rejectError);
+      setError(rejectError.message || "Failed to reject application.");
     }
   };
 
   const handleDelete = async (petId) => {
-    const confirm = window.confirm("Are you sure you want to delete this pet?");
-    if (!confirm) return;
+    const confirmed = window.confirm("Are you sure you want to delete this pet?");
+    if (!confirmed) return;
+
     try {
-      await deleteDoc(doc(db, "pets", petId));
+      setError("");
+      setSuccess("");
+      await deletePet(petId);
       setPets((prevPets) => prevPets.filter((pet) => pet.id !== petId));
-    } catch (error) {
-      console.error("Error deleting pet:", error);
+      setRequests((prevRequests) => prevRequests.filter((request) => request.petId !== petId));
+      setSuccess("Pet deleted successfully.");
+    } catch (deleteError) {
+      console.error("Error deleting pet:", deleteError);
+      setError(deleteError.message || "Failed to delete pet.");
     }
   };
+
+  if (!authLoading && hasToken && !isAllowedRole) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.errorBanner}>Access denied. Only rehomers or shelter admins can view this dashboard.</div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -216,26 +229,27 @@ const RehomerDashboard = () => {
         </div>
       </div>
 
+      {error && <div style={styles.errorBanner}>{error}</div>}
+      {success && <div style={styles.successBanner}>{success}</div>}
+
       <div style={styles.statsContainer}>
         <div style={styles.statCard}>
           <h3 style={styles.statNumber}>{pets.length}</h3>
           <p style={styles.statLabel}>Pets Listed</p>
         </div>
         <div style={styles.statCard}>
-          <h3 style={styles.statNumber}>
-            {pets.filter((p) => p.adopted).length}
-          </h3>
+          <h3 style={styles.statNumber}>{pets.filter((pet) => pet.adopted).length}</h3>
           <p style={styles.statLabel}>Success Stories</p>
         </div>
         <div style={styles.statCard}>
-          <h3 style={styles.statNumber}>{requests.length}</h3>
+          <h3 style={styles.statNumber}>{pendingRequests.length}</h3>
           <p style={styles.statLabel}>Pending Requests</p>
         </div>
       </div>
 
       <div style={styles.header}>
         <button onClick={() => navigate("/add-pet")} style={styles.addButton}>
-          🐾 Add New Pet
+          Add New Pet
         </button>
 
         <button
@@ -243,18 +257,22 @@ const RehomerDashboard = () => {
           style={styles.requestsButton}
         >
           {showRequests
-            ? "🐶 Hide Requests"
-            : `📨 View Requests (${requests.length})`}
+            ? "Hide Requests"
+            : `View Requests (${pendingRequests.length})`}
         </button>
       </div>
 
-      {showRequests ? (
+      {loading ? (
+        <div style={styles.loadingState}>
+          <p>Loading your furry friends...</p>
+        </div>
+      ) : showRequests ? (
         <div style={styles.requestsSection}>
           <h2 style={styles.sectionTitle}>Adoption Requests</h2>
           {requests.length === 0 ? (
             <div style={styles.emptyState}>
-              <p>No adoption requests yet. But don't worry - your perfect matches are out there!</p>
-              <p>Try adding more photos or details to your pet listings to attract adopters.</p>
+              <p>No adoption applications yet.</p>
+              <p>Your future matches will appear here once adopters start applying.</p>
             </div>
           ) : (
             <div style={styles.requestsList}>
@@ -276,18 +294,25 @@ const RehomerDashboard = () => {
                     <p><strong>Contact:</strong> {request.userPhone} | {request.userEmail}</p>
                     <p>
                       <strong>Visit Date:</strong>{" "}
-                      {request.visitDate?.toDate().toLocaleDateString()}
+                      {request.visitDate ? new Date(request.visitDate).toLocaleDateString() : "Not provided"}
                     </p>
                     <p><strong>Message:</strong> "{request.message}"</p>
+                    <p><strong>Status:</strong> {toTitleCase(request.status)}</p>
                   </div>
 
                   {request.status === "pending" && (
                     <div style={styles.requestActions}>
                       <button
-                        onClick={() => handleAdopt(request.petId, request.id)}
+                        onClick={() => handleApprove(request.petId, request.id)}
                         style={styles.approveButton}
                       >
                         Approve Adoption
+                      </button>
+                      <button
+                        onClick={() => handleReject(request.id)}
+                        style={styles.rejectButton}
+                      >
+                        Reject
                       </button>
                     </div>
                   )}
@@ -296,68 +321,61 @@ const RehomerDashboard = () => {
             </div>
           )}
         </div>
+      ) : pets.length === 0 ? (
+        <div style={styles.emptyState}>
+          <h2 style={styles.sectionTitle}>Your Pets</h2>
+          <p>No pets listed yet. The perfect home is waiting - add your first pet!</p>
+          <button
+            onClick={() => navigate("/add-pet")}
+            style={styles.ctaButton}
+          >
+            Start Your First Listing
+          </button>
+        </div>
       ) : (
-        <>
-          {loading ? (
-            <div style={styles.loadingState}>
-              <p>Loading your furry friends...</p>
-            </div>
-          ) : pets.length === 0 ? (
-            <div style={styles.emptyState}>
-              <h2 style={styles.sectionTitle}>Your Pets</h2>
-              <p>No pets listed yet. The perfect home is waiting - add your first pet!</p>
-              <button
-                onClick={() => navigate("/add-pet")}
-                style={styles.ctaButton}
-              >
-                Start Your First Listing
-              </button>
-            </div>
-          ) : (
-            <div style={styles.petsSection}>
-              <h2 style={styles.sectionTitle}>Your Current Listings</h2>
-              <div style={styles.petsGrid}>
-                {pets.map((pet) => (
-                  <div key={pet.id} style={styles.petCard}>
-                    <img
-                      src={pet.imageUrl || "/default-pet.jpg"}
-                      alt={pet.name}
-                      style={styles.petImage}
-                    />
-                    <div style={styles.petInfo}>
-                      <h3>{pet.name}</h3>
-                      <p><strong>Breed:</strong> {pet.breed}</p>
-                      <p><strong>Age:</strong> {pet.age}</p>
-                      <p>
-                        <strong>Status:</strong>{" "}
-                        <span
-                          style={{
-                            color: pet.adopted ? "green" : "orange",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {pet.adopted ? "Adopted 🎉" : "Available 🏠"}
-                        </span>
-                      </p>
-                      {!pet.adopted && (
-                        <button
-                          onClick={() => handleDelete(pet.id)}
-                          style={styles.deleteButton}
-                        >
-                          Delete Pet
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+        <div style={styles.petsSection}>
+          <h2 style={styles.sectionTitle}>Your Current Listings</h2>
+          <div style={styles.petsGrid}>
+            {pets.map((pet) => (
+              <div key={pet.id} style={styles.petCard}>
+                <img
+                  src={pet.imageUrl || "/default-pet.jpg"}
+                  alt={pet.name}
+                  style={styles.petImage}
+                />
+                <div style={styles.petInfo}>
+                  <h3>{pet.name}</h3>
+                  <p><strong>Breed:</strong> {pet.breed || "Unknown"}</p>
+                  <p><strong>Age:</strong> {pet.age || "Unknown"}</p>
+                  <p>
+                    <strong>Status:</strong>{" "}
+                    <span
+                      style={{
+                        color: pet.adopted ? "green" : "orange",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {pet.adopted ? "Adopted" : "Available"}
+                    </span>
+                  </p>
+                  {!pet.adopted && (
+                    <button
+                      onClick={() => handleDelete(pet.id)}
+                      style={styles.deleteButton}
+                    >
+                      Delete Pet
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
 };
+
 const styles = {
   container: {
     maxWidth: "1200px",
@@ -437,14 +455,6 @@ const styles = {
     cursor: "pointer",
     fontSize: "16px",
     fontWeight: "bold",
-    transition: "all 0.3s",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    "&:hover": {
-      backgroundColor: "#e69500",
-      transform: "translateY(-2px)",
-    },
   },
   requestsButton: {
     backgroundColor: "#4CAF50",
@@ -455,14 +465,6 @@ const styles = {
     cursor: "pointer",
     fontSize: "16px",
     fontWeight: "bold",
-    transition: "all 0.3s",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    "&:hover": {
-      backgroundColor: "#3e8e41",
-      transform: "translateY(-2px)",
-    },
   },
   sectionTitle: {
     color: "#333",
@@ -484,10 +486,6 @@ const styles = {
     borderRadius: "10px",
     overflow: "hidden",
     boxShadow: "0 3px 10px rgba(0,0,0,0.1)",
-    transition: "transform 0.3s",
-    "&:hover": {
-      transform: "translateY(-5px)",
-    },
   },
   petImage: {
     width: "100%",
@@ -496,29 +494,8 @@ const styles = {
     borderRadius: "8px",
     marginBottom: "10px",
   },
-  petName: {
-    fontSize: "20px",
-    fontWeight: "bold",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "6px",
-  },
   petInfo: {
     padding: "15px",
-    h3: {
-      margin: "0 0 10px",
-      color: "#333",
-    },
-    p: {
-      margin: "8px 0",
-      color: "#555",
-    },
-  },
-  successNote: {
-    color: "#4CAF50",
-    fontWeight: "bold",
-    marginTop: "10px",
   },
   requestsSection: {
     marginTop: "20px",
@@ -526,44 +503,65 @@ const styles = {
   requestsList: {
     display: "flex",
     flexDirection: "column",
-    gap: "20px",
-    marginTop: "20px",
+    gap: "15px",
   },
   requestCard: {
     backgroundColor: "#fff",
-    padding: "20px",
-    borderRadius: "10px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    padding: "15px",
+    borderRadius: "8px",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: "15px",
+    flexDirection: "column",
   },
-  requestInfo: {
-    flex: "1",
-    minWidth: "250px",
-    h3: {
-      margin: "0 0 10px",
-      color: "#333",
-    },
-    p: {
-      margin: "8px 0",
-      color: "#555",
-    },
+  requestHeader: {
+    display: "flex",
+    alignItems: "center",
+    marginBottom: "10px",
+  },
+  requestPetImage: {
+    width: "100px",
+    height: "100px",
+    borderRadius: "10%",
+    objectFit: "cover",
+    marginRight: "15px",
+  },
+  requestDetails: {
+    marginBottom: "10px",
+  },
+  requestActions: {
+    marginTop: "10px",
+    textAlign: "right",
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: "10px",
   },
   approveButton: {
-    backgroundColor: "#4CAF50",
+    backgroundColor: "#FFA500",
     color: "white",
     border: "none",
-    padding: "10px 20px",
+    padding: "8px 12px",
+    borderRadius: "5px",
+    cursor: "pointer",
+    fontSize: "14px",
+  },
+  rejectButton: {
+    backgroundColor: "#e53e3e",
+    color: "white",
+    border: "none",
+    padding: "8px 12px",
+    borderRadius: "5px",
+    cursor: "pointer",
+    fontSize: "14px",
+  },
+  deleteButton: {
+    backgroundColor: "#e53e3e",
+    color: "white",
+    border: "none",
+    padding: "10px 16px",
     borderRadius: "6px",
     cursor: "pointer",
     fontWeight: "bold",
-    transition: "all 0.3s",
-    "&:hover": {
-      backgroundColor: "#3e8e41",
-    },
+    marginTop: "10px",
   },
   emptyState: {
     textAlign: "center",
@@ -582,74 +580,28 @@ const styles = {
     fontSize: "16px",
     fontWeight: "bold",
     marginTop: "20px",
-    transition: "all 0.3s",
-    "&:hover": {
-      backgroundColor: "#e69500",
-    },
   },
   loadingState: {
     textAlign: "center",
     padding: "40px",
     color: "#666",
   },
-    requestsSection: {
-      marginTop: "20px",
-    },
-    sectionTitle: {
-      fontSize: "1.5em",
-      color: "#343a40",
-      marginBottom: "15px",
-      borderBottom: "2px solid #FFA500", // Orange border
-      paddingBottom: "5px",
-    },
-    requestsList: {
-      display: "flex",
-      flexDirection: "column",
-      gap: "15px",
-    },
-    requestCard: {
-      backgroundColor: "#fff",
-      padding: "15px",
-      borderRadius: "8px",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-      display: "flex",
-      flexDirection: "column",
-    },
-    requestHeader: {
-      display: "flex",
-      alignItems: "center",
-      marginBottom: "10px",
-    },
-    requestPetImage: {
-      width: "100px",  
-      height: "100px", 
-      borderRadius: "10%",
-      objectFit: "cover",
-      marginRight: "15px",
-    },
-    requestDetails: {
-      marginBottom: "10px",
-    },
-    requestActions: {
-      marginTop: "10px",
-      textAlign: "right",
-    },
-    approveButton: {
-      backgroundColor: "#FFA500",  
-      color: "white",
-      border: "none",
-      padding: "8px 12px",
-      borderRadius: "5px",
-      cursor: "pointer",
-      fontSize: "14px",
-    },
-    emptyState: {
-      textAlign: "center",
-      padding: "20px",
-      backgroundColor: "#fff",
-      borderRadius: "8px",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-      color: "#6c757d",
-    },
-  };
+  errorBanner: {
+    backgroundColor: "#fff5f5",
+    color: "#c53030",
+    border: "1px solid #feb2b2",
+    padding: "12px 16px",
+    borderRadius: "8px",
+    marginBottom: "20px",
+  },
+  successBanner: {
+    backgroundColor: "#f0fff4",
+    color: "#2f855a",
+    border: "1px solid #9ae6b4",
+    padding: "12px 16px",
+    borderRadius: "8px",
+    marginBottom: "20px",
+  },
+};
+
 export default RehomerDashboard;

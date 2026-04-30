@@ -1,59 +1,100 @@
 import React, { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { auth } from "./firebaseconfig";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "./firebaseconfig";
+import {
+  clearTokens,
+  getCurrentUser,
+  loginUser,
+} from "../../services/api";
+import { useAuth } from "./AuthContext";
+
+const mapRouteTypeToRole = (type) => {
+  if (type === "rehomer") {
+    return "rehomer";
+  }
+
+  if (type === "shelter") {
+    return "shelter_admin";
+  }
+
+  return "adopter";
+};
+
+const getRouteLabel = (type) => {
+  if (type === "rehomer") {
+    return "Rehomer";
+  }
+
+  if (type === "shelter") {
+    return "Shelter";
+  }
+
+  return "User";
+};
+
+const getRedirectPath = (role) => {
+  if (role === "rehomer") {
+    return "/rehomer-dashboard";
+  }
+
+  if (role === "shelter_admin") {
+    return "/";
+  }
+
+  return "/pets";
+};
+
+const getLoginLinkType = (type) => (type === "rehomer" || type === "shelter" ? type : "user");
 
 const Login = () => {
   const { type } = useParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { setAuthenticatedUser, logout } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    
+    setIsSubmitting(true);
+
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        
-        if ((type === "rehomer" && !userData.isRehomer) || 
-            (type !== "rehomer" && userData.isRehomer)) {
-          setError(`Please login through the ${userData.isRehomer ? 'rehomer' : 'user'} login page`);
-          await auth.signOut();
-          return;
-        }
-        
-        if (userData.isRehomer) {
-          navigate("/rehomer-dashboard", { replace: true });
-        } else {
-          navigate("/", { replace: true });
-        }
-      } else {
-        setError("User data not found. Please complete your registration.");
-        await auth.signOut();
+      const normalizedEmail = email.trim().toLowerCase();
+      const expectedRole = mapRouteTypeToRole(type);
+
+      const tokenResponse = await loginUser({
+        username: normalizedEmail,
+        password,
+      });
+
+      const profile = await getCurrentUser();
+
+      if (profile.role !== expectedRole) {
+        clearTokens();
+        logout();
+        setError(
+          `Please login through the ${profile.role === "rehomer" ? "rehomer" : profile.role === "shelter_admin" ? "shelter" : "user"} login page`,
+        );
+        return;
       }
+
+      setAuthenticatedUser(profile, {
+        access: tokenResponse.access,
+        refresh: tokenResponse.refresh,
+      });
+
+      navigate(getRedirectPath(profile.role), { replace: true });
     } catch (err) {
-      setError(
-        err.message.includes("user-not-found") 
-          ? "No account found with this email"
-          : err.message.includes("wrong-password")
-          ? "Incorrect password"
-          : "Login failed. Please try again."
-      );
+      setError(err.message || "Login failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Login as {type === "rehomer" ? "Rehomer" : "User"}</h2>
+      <h2 style={styles.title}>Login as {getRouteLabel(type)}</h2>
       {error && <p style={styles.error}>{error}</p>}
       <form onSubmit={handleSubmit} style={styles.form}>
         <div style={styles.inputGroup}>
@@ -76,12 +117,14 @@ const Login = () => {
             style={styles.input}
           />
         </div>
-        <button type="submit" style={styles.button}>Login</button>
+        <button type="submit" style={styles.button} disabled={isSubmitting}>
+          {isSubmitting ? "Logging in..." : "Login"}
+        </button>
       </form>
       <div style={styles.signupLink}>
-        Don't have an account?{' '}
-        <Link 
-          to={type === "rehomer" ? "/signup/rehomer" : "/signup/user"} 
+        Don't have an account?{" "}
+        <Link
+          to={`/signup/${getLoginLinkType(type)}`}
           style={styles.link}
         >
           Sign up

@@ -24,7 +24,7 @@ const ProtectedRoute = ({ children, isRehomer = false }) => {
     return <Navigate to={`/login/${isRehomer ? 'rehomer' : 'user'}`} replace />;
   }
 
-  if (isRehomer && !userData?.isRehomer) {
+  if (isRehomer && !userData?.isRehomer && userData?.role !== "shelter_admin") {
     return <Navigate to="/" replace />;
   }
 
@@ -42,7 +42,9 @@ function AppWrapper() {
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Navigate to="/login/user" replace />} />
           <Route path="/login/:type" element={<Login />} />
+          <Route path="/signup" element={<Navigate to="/signup/user" replace />} />
           <Route path="/signup/:type" element={<Signup />} />
           <Route path="/pets" element={<PetsList />} />
           <Route path="/pet/:id" element={<PetDetail />} />

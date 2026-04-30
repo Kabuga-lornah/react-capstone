@@ -1,97 +1,104 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { auth } from "../pages/firebaseconfig";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  updateDoc,
-  onSnapshot,
-  orderBy,
-} from "firebase/firestore";
-import { db } from "../pages/firebaseconfig";
-import { useAuthState } from "react-firebase-hooks/auth";
+import { getAccessToken, listMyApplications } from "../../services/api";
+import { useAuth } from "./AuthContext";
+
+const toTitleCase = (value) =>
+  value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
+
+const getPetImageUrl = (pet) => {
+  const mainImage = pet.images?.find((image) => image.is_main);
+  const fallbackImage = pet.images?.[0];
+
+  return (
+    pet.imageUrl ||
+    pet.image_url ||
+    mainImage?.image_url ||
+    fallbackImage?.image_url ||
+    mainImage?.image ||
+    fallbackImage?.image ||
+    "/default-pet.jpg"
+  );
+};
+
+const normalizeApplication = (application) => {
+  const pet = application.pet || {};
+
+  return {
+    ...application,
+    id: String(application.id),
+    petId: pet.id ? String(pet.id) : String(application.id),
+    petName: pet.name || "Unnamed Pet",
+    petType: pet.type || pet.species || "other",
+    petBreed: pet.breed || "Unknown",
+    petAge: pet.age || "Unknown",
+    petImageUrl: getPetImageUrl(pet),
+    status: application.status || "pending",
+    message: application.message || "",
+    visitDate: application.preferred_visit_date || "",
+    createdAt: application.created_at || "",
+  };
+};
 
 const MyListings = () => {
   const navigate = useNavigate();
-  const [user] = useAuthState(auth);
-  const [notifications, setNotifications] = useState([]);
-  const [adoptionRequests, setAdoptionRequests] = useState([]); // State for adoption requests
+  const { loading: authLoading, userData } = useAuth();
+  const [adoptionRequests, setAdoptionRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("notifications"); // "notifications" or "myRequests"
+  const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("myRequests");
 
-  // Fetch notifications and adoption requests
+  const hasToken = Boolean(getAccessToken());
+  const isAdopter = userData?.role === "adopter";
+
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
+    if (authLoading) {
       return;
     }
 
-    const unsubscribeNotifications = onSnapshot(
-      query(
-        collection(db, "notifications"),
-        where("userId", "==", user.uid),
-        orderBy("createdAt", "desc")
-      ),
-      (snapshot) => {
-        const notifs = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          visitDate: doc.data().visitDate?.toDate(),
-        }));
-        setNotifications(notifs);
-      }
-    );
+    if (!hasToken) {
+      navigate("/login/user", { replace: true });
+    }
+  }, [authLoading, hasToken, navigate]);
 
-    // Fetch adoption requests where the userId matches the current user's ID
-    const fetchAdoptionRequests = async () => {
+  useEffect(() => {
+    const fetchApplications = async () => {
+      if (authLoading || !hasToken || !isAdopter) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        const q = query(
-          collection(db, "adoptionRequests"),
-          where("userId", "==", user.uid) // Filter by user's ID
-          // Potentially add more filters, e.g., where("status", "==", "pending")
-        );
-        const querySnapshot = await getDocs(q);
-        const requests = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setAdoptionRequests(requests);
-      } catch (error) {
-        console.error("Error fetching adoption requests:", error);
+        setError("");
+        const response = await listMyApplications();
+        const requests = Array.isArray(response) ? response : response?.results || [];
+        setAdoptionRequests(requests.map(normalizeApplication));
+      } catch (fetchError) {
+        console.error("Error fetching adoption requests:", fetchError);
+        setError(fetchError.message || "Failed to load your adoption applications.");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchAdoptionRequests();
+    fetchApplications();
+  }, [authLoading, hasToken, isAdopter]);
 
-    return () => {
-      unsubscribeNotifications();
-    };
-  }, [user]);
+  const pendingCount = useMemo(
+    () => adoptionRequests.filter((request) => request.status === "pending").length,
+    [adoptionRequests],
+  );
 
-  const markAsRead = async (notificationId) => {
-    try {
-      await updateDoc(doc(db, "notifications", notificationId), {
-        read: true,
-      });
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  };
-
-  const formatDate = (date) => {
-    return date?.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
+  if (!authLoading && hasToken && !isAdopter) {
+    return (
+      <div style={styles.container}>
+        <p style={styles.errorMessage}>
+          Access denied. Only adopters can view this page.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -99,60 +106,25 @@ const MyListings = () => {
 
       <div style={styles.tabContainer}>
         <button
-          style={
-            activeTab === "notifications" ? styles.activeTab : styles.tab
-          }
+          style={activeTab === "notifications" ? styles.activeTab : styles.tab}
           onClick={() => setActiveTab("notifications")}
         >
           Notifications
-          {notifications.filter((n) => !n.read).length > 0 && (
-            <span style={styles.badge}>
-              {notifications.filter((n) => !n.read).length}
-            </span>
-          )}
         </button>
         <button
           style={activeTab === "myRequests" ? styles.activeTab : styles.tab}
           onClick={() => setActiveTab("myRequests")}
         >
           My Adoption Requests
+          {pendingCount > 0 && <span style={styles.badge}>{pendingCount}</span>}
         </button>
       </div>
 
       {activeTab === "notifications" && (
         <div style={styles.notificationsContainer}>
-          {loading ? (
-            <p>Loading notifications...</p>
-          ) : notifications.length === 0 ? (
-            <p style={styles.emptyMessage}>No notifications yet.</p>
-          ) : (
-            <div style={styles.notificationsList}>
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  style={
-                    !notification.read
-                      ? styles.unreadNotification
-                      : styles.notification
-                  }
-                  onClick={() => markAsRead(notification.id)}
-                >
-                  <h3 style={styles.notificationTitle}>{notification.title}</h3>
-                  <p style={styles.notificationMessage}>
-                    {notification.message}
-                  </p>
-                  {notification.visitDate && (
-                    <p style={styles.visitDate}>
-                      Scheduled visit: {formatDate(notification.visitDate)}
-                    </p>
-                  )}
-                  {!notification.read && (
-                    <span style={styles.unreadBadge}>New</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+          <p style={styles.emptyMessage}>
+            Notifications are not connected to the Django API yet. Your current adoption request statuses are available in the "My Adoption Requests" tab.
+          </p>
         </div>
       )}
 
@@ -160,16 +132,44 @@ const MyListings = () => {
         <div style={styles.requestsContainer}>
           {loading ? (
             <p>Loading adoption requests...</p>
+          ) : error ? (
+            <p style={styles.errorMessage}>{error}</p>
           ) : adoptionRequests.length === 0 ? (
-            <p>No adoption requests found.</p>
+            <p style={styles.emptyMessage}>No adoption applications yet.</p>
           ) : (
             <div style={styles.adoptionRequestsList}>
               {adoptionRequests.map((request) => (
                 <div key={request.id} style={styles.adoptionRequestCard}>
-                  <h3>Pet Name: {request.petName}</h3>
-                  <p>Message: {request.message}</p>
-                  <p>Status: {request.status}</p>
-                  {/* Display other relevant information */}
+                  <div style={styles.requestHeader}>
+                    <img
+                      src={request.petImageUrl}
+                      alt={request.petName}
+                      style={styles.petImage}
+                    />
+                    <div>
+                      <h3>Pet Name: {request.petName}</h3>
+                      <p>Breed: {request.petBreed}</p>
+                      <p>Age: {request.petAge}</p>
+                    </div>
+                  </div>
+                  <p>Message: {request.message || "No message provided."}</p>
+                  <p>
+                    Status:{" "}
+                    <strong style={{ color: request.status === "approved" ? "#2e7d32" : request.status === "rejected" ? "#c62828" : "#ef6c00" }}>
+                      {toTitleCase(request.status)}
+                    </strong>
+                  </p>
+                  {request.visitDate && (
+                    <p>Preferred Visit Date: {new Date(request.visitDate).toLocaleDateString()}</p>
+                  )}
+                  <div style={styles.requestActions}>
+                    <button
+                      style={styles.viewButton}
+                      onClick={() => navigate(`/pet/${request.petId}`)}
+                    >
+                      View Pet
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -181,116 +181,105 @@ const MyListings = () => {
 };
 
 const styles = {
-    container: {
-      maxWidth: "800px",
-      margin: "0 auto",
-      padding: "20px",
-      fontFamily: "Arial, sans-serif",
-    },
-    title: {
-      textAlign: "center",
-      color: "#FFA500",
-      marginBottom: "30px",
-    },
-    tabContainer: {
-      display: "flex",
-      marginBottom: "20px",
-      borderBottom: "1px solid #FFA500",
-    },
-    tab: {
-      padding: "10px 20px",
-      background: "none",
-      border: "none",
-      cursor: "pointer",
-      position: "relative",
-      color: "#FFA500",
-    },
-    activeTab: {
-      padding: "10px 20px",
-      background: "none",
-      border: "none",
-      borderBottom: "2px solid #FFA500",
-      cursor: "pointer",
-      fontWeight: "bold",
-      position: "relative",
-      color: "#FFA500",
-    },
-    badge: {
-      position: "absolute",
-      top: "-5px",
-      right: "5px",
-      backgroundColor: "#FFA500",
-      color: "white",
-      borderRadius: "50%",
-      padding: "2px 6px",
-      fontSize: "12px",
-    },
-    notificationsContainer: {
-      backgroundColor: "#fffaf0",
-      borderRadius: "8px",
-      padding: "20px",
-    },
-    emptyMessage: {
-      textAlign: "center",
-      color: "#FFA500",
-    },
-    notificationsList: {
-      display: "flex",
-      flexDirection: "column",
-      gap: "15px",
-    },
-    notification: {
-      backgroundColor: "#fff",
-      padding: "15px",
-      borderRadius: "5px",
-      boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-      cursor: "pointer",
-      position: "relative",
-    },
-    unreadNotification: {
-      backgroundColor: "#fff8e1",
-      padding: "15px",
-      borderRadius: "5px",
-      boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-      cursor: "pointer",
-      position: "relative",
-      borderLeft: "4px solid #FFA500",
-    },
-    notificationTitle: {
-      margin: "0 0 5px 0",
-      color: "#FFA500",
-    },
-    notificationMessage: {
-      margin: "0 0 10px 0",
-      color: "#555",
-    },
-    visitDate: {
-      margin: "0",
-      color: "#FFA500",
-      fontWeight: "bold",
-    },
-    unreadBadge: {
-      position: "absolute",
-      top: "10px",
-      right: "10px",
-      backgroundColor: "#FFA500",
-      color: "white",
-      padding: "2px 8px",
-      borderRadius: "10px",
-      fontSize: "12px",
-    },
-    requestsContainer: {
-      padding: "20px",
-    },
-    adoptionRequestsList: {
-      // Style as needed
-    },
-    adoptionRequestCard: {
-      border: "1px solid #FFA500",
-      padding: "10px",
-      marginBottom: "10px",
-      borderRadius: "4px",
-    },
-  };
+  container: {
+    maxWidth: "800px",
+    margin: "0 auto",
+    padding: "20px",
+    fontFamily: "Arial, sans-serif",
+  },
+  title: {
+    textAlign: "center",
+    color: "#FFA500",
+    marginBottom: "30px",
+  },
+  tabContainer: {
+    display: "flex",
+    marginBottom: "20px",
+    borderBottom: "1px solid #FFA500",
+  },
+  tab: {
+    padding: "10px 20px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    position: "relative",
+    color: "#FFA500",
+  },
+  activeTab: {
+    padding: "10px 20px",
+    background: "none",
+    border: "none",
+    borderBottom: "2px solid #FFA500",
+    cursor: "pointer",
+    fontWeight: "bold",
+    position: "relative",
+    color: "#FFA500",
+  },
+  badge: {
+    position: "absolute",
+    top: "-5px",
+    right: "5px",
+    backgroundColor: "#FFA500",
+    color: "white",
+    borderRadius: "50%",
+    padding: "2px 6px",
+    fontSize: "12px",
+  },
+  notificationsContainer: {
+    backgroundColor: "#fffaf0",
+    borderRadius: "8px",
+    padding: "20px",
+  },
+  emptyMessage: {
+    textAlign: "center",
+    color: "#FFA500",
+  },
+  errorMessage: {
+    textAlign: "center",
+    color: "#c62828",
+  },
+  requestsContainer: {
+    padding: "20px",
+  },
+  adoptionRequestsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "15px",
+  },
+  adoptionRequestCard: {
+    border: "1px solid #FFA500",
+    padding: "15px",
+    marginBottom: "10px",
+    borderRadius: "8px",
+    backgroundColor: "#fff",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.08)",
+  },
+  requestHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "15px",
+    marginBottom: "12px",
+  },
+  petImage: {
+    width: "90px",
+    height: "90px",
+    objectFit: "cover",
+    borderRadius: "8px",
+    backgroundColor: "#f5f5f5",
+  },
+  requestActions: {
+    marginTop: "12px",
+    display: "flex",
+    justifyContent: "flex-end",
+  },
+  viewButton: {
+    backgroundColor: "#FFA500",
+    color: "white",
+    border: "none",
+    padding: "8px 14px",
+    borderRadius: "6px",
+    cursor: "pointer",
+  },
+};
 
 export default MyListings;

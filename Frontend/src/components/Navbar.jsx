@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "./pages/AuthContext";
-import { auth } from "./pages/firebaseconfig"; 
 import { PetPouchContext } from './pages/PetPouchContext';
 
 
 
 const Navbar = () => {
-  const { user, userData, isRehomer } = useAuth();
+  const { user, isRehomer, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginOptions, setShowLoginOptions] = useState(false);
   // const [petPouchCount, setPetPouchCount] = useState(0);
@@ -17,7 +16,7 @@ const Navbar = () => {
  
 
   const handleLogout = async () => {
-    await auth.signOut();
+    logout();
     navigate("/");
     setShowDropdown(false);
   };

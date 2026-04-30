@@ -1,28 +1,31 @@
-import React, { createContext, useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from './firebaseconfig'; 
+import React, { createContext, useState, useEffect } from "react";
+import { getAccessToken, listWishlist } from "../../services/api";
 
 export const PetPouchContext = createContext();
 
 export const PetPouchProvider = ({ user, children }) => {
   const [petPouchCount, setPetPouchCount] = useState(0);
 
-  // Function to fetch pet pouch count from Firestore for the current user
   const fetchPetPouchCount = async () => {
-    if (!user) {
+    if (!user || !getAccessToken()) {
       setPetPouchCount(0);
       return;
     }
-    const q = query(collection(db, "petPouch"), where("userId", "==", user.uid));
-    const querySnapshot = await getDocs(q);
-    setPetPouchCount(querySnapshot.size);
+
+    try {
+      const response = await listWishlist();
+      const wishlistItems = Array.isArray(response) ? response : response?.results || [];
+      setPetPouchCount(wishlistItems.length);
+    } catch (error) {
+      console.error("Error fetching pet pouch count:", error);
+      setPetPouchCount(0);
+    }
   };
 
   useEffect(() => {
     fetchPetPouchCount();
   }, [user]);
 
-  // Provide a function to refresh count after add/remove
   const updatePetPouchCount = () => {
     fetchPetPouchCount();
   };

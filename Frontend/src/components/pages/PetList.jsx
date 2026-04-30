@@ -1,13 +1,18 @@
-import { useState, useEffect, useRef, useContext } from "react";
-
-import { useAuth } from "../pages/AuthContext";
-import { collection, query, where, getDocs, addDoc, getDoc, doc, updateDoc } from "firebase/firestore";
-import { db } from "../pages/firebaseconfig";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { PetPouchContext } from './PetPouchContext';
+import { useAuth } from "./AuthContext";
+import { PetPouchContext } from "./PetPouchContext";
+import {
+  addToWishlist,
+  createAdoptionApplication,
+  getAccessToken,
+  listMyApplications,
+  listPets,
+  listWishlist,
+  updatePet,
+} from "../../services/api";
 
-
-
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const personalityTags = [
   "Friendly",
@@ -24,7 +29,6 @@ const personalityTags = [
 const styles = {
   petCardsContainer: {
     display: "flex",
-    // justifyContent: "center",
     gap: "20px",
     flexWrap: "wrap",
   },
@@ -37,7 +41,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
-    height: "400px",
+    height: "430px",
   },
   petImage: {
     width: "100%",
@@ -46,7 +50,6 @@ const styles = {
     borderRadius: "8px",
     marginBottom: "10px",
   },
-  
   petName: {
     fontSize: "20px",
     fontWeight: "bold",
@@ -80,13 +83,23 @@ const styles = {
     fontSize: "16px",
     transition: "background-color 0.3s",
   },
+  secondaryButton: {
+    backgroundColor: "white",
+    color: "#FFA500",
+    border: "1px solid #FFA500",
+    padding: "8px 16px",
+    borderRadius: "5px",
+    cursor: "pointer",
+    fontSize: "14px",
+    transition: "all 0.3s",
+    marginTop: "8px",
+  },
   categoryHeading: {
     fontSize: "28px",
     fontWeight: "700",
     marginBottom: "15px",
     color: "#2d3748",
   },
-  
   adoptedButton: {
     backgroundColor: "#FFA500",
     color: "#ffffff",
@@ -112,211 +125,325 @@ const styles = {
     gap: "10px",
     animation: "slideUp 0.5s ease-out",
   },
-  "@keyframes slideUp": {
-    "0%": { transform: "translateX(-50%) translateY(100px)", opacity: 0 },
-    "100%": { transform: "translateX(-50%) translateY(0)", opacity: 1 },
+  statusMessage: {
+    padding: "16px",
+    borderRadius: "8px",
+    marginBottom: "20px",
+    fontSize: "15px",
   },
-
+  errorMessage: {
+    backgroundColor: "#fff5f5",
+    color: "#c53030",
+    border: "1px solid #feb2b2",
+  },
+  infoMessage: {
+    backgroundColor: "#fffaf0",
+    color: "#9c6b00",
+    border: "1px solid #f6d18a",
+  },
+  emptyState: {
+    padding: "24px",
+    backgroundColor: "#f8f9fa",
+    borderRadius: "12px",
+    color: "#4a5568",
+  },
 };
+
+const toTitleCase = (value) =>
+  value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
+
+const normalizePersonalityTraits = (traits) =>
+  Array.isArray(traits) ? traits.map((trait) => toTitleCase(String(trait))) : [];
+
+const getPetImageUrl = (pet) => {
+  const mainImage = pet.images?.find((image) => image.is_main);
+  const fallbackImage = pet.images?.[0];
+
+  return (
+    pet.imageUrl ||
+    pet.image_url ||
+    mainImage?.image_url ||
+    fallbackImage?.image_url ||
+    mainImage?.image ||
+    fallbackImage?.image ||
+    "/default-pet.jpg"
+  );
+};
+
+const normalizePet = (pet) => ({
+  ...pet,
+  id: String(pet.id),
+  type: pet.type || pet.species || "other",
+  personality: pet.personality || normalizePersonalityTraits(pet.personality_traits),
+  imageUrl: pet.imageUrl || getPetImageUrl(pet),
+});
+
 const PetsList = () => {
   const [pets, setPets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [actionMessage, setActionMessage] = useState({ type: "", text: "" });
   const [selectedTags, setSelectedTags] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [likedPets, setLikedPets] = useState([]);
   const [adoptedPets, setAdoptedPets] = useState([]);
-  const [notification, setNotification] = useState({ show: false, petName: "" });
+  const [savedPets, setSavedPets] = useState([]);
+  const [notification, setNotification] = useState({ show: false, text: "" });
 
   const notificationTimerRef = useRef(null);
-  const navigate = useNavigate();
   const { user } = useAuth();
   const { updatePetPouchCount } = useContext(PetPouchContext);
+  const navigate = useNavigate();
 
-  const addToPetPouch = async (pet) => {
-    if (!user) {
-      alert("Please log in to adopt pets");
-      return;
+  const showNotification = (text) => {
+    setNotification({ show: true, text });
+
+    if (notificationTimerRef.current) {
+      clearTimeout(notificationTimerRef.current);
     }
-  
-    try {
-      const petRef = doc(db, "pets", pet.id);
-      
-      // Update the pet's adopted status to true
-      await updateDoc(petRef, {
-        adopted: true
-      });
-  
-      const petDoc = await getDoc(petRef);
-  
-      if (!petDoc.exists()) {
-        console.error("Pet not found in 'pets' collection");
-        return;
-      }
-  
-      const petData = petDoc.data();
-      console.log("Adding pet to pouch with data:", petData);
-  
-      await addDoc(collection(db, "petPouch"), {
-        userId: user.uid,
-        petId: pet.id,
-        name: pet.name,
-        breed: pet.breed,
-        age: pet.age,
-        imageUrl: pet.imageUrl,
-        personality: pet.personality,
-        type: pet.type,
-        addedAt: new Date(),
-        rehomerId: petData.rehomerId,
-        rehomerName: petData.rehomerName,
-      });
-  
-      setAdoptedPets([...adoptedPets, pet.id]);
-      updateNavbarCounter();
-      
-      // Instead of filtering, we'll rely on the Firestore query to refresh the list
-      // Remove this line: setPets(prevPets => prevPets.filter(p => p.id !== pet.id));
-    } catch (error) {
-      console.error("Error adding to pet pouch:", error);
-    }
-    updatePetPouchCount();
+
+    notificationTimerRef.current = setTimeout(() => {
+      setNotification({ show: false, text: "" });
+    }, 3000);
   };
 
-  const updateNavbarCounter = () => {
-    const pouchCount = adoptedPets.length + 1;
-    const pouchLink = document.querySelector('.nav-link[href="/pet-pouch"]');
-    if (pouchLink) {
-      pouchLink.textContent = `Pet Pouch (${pouchCount})`;
-    }
-  };
-
-  const handleLike = (petId) => {
-    const isLiked = likedPets.includes(petId);
-    let updatedLikes;
-
-    if (isLiked) {
-      // Unliking
-      updatedLikes = likedPets.filter((id) => id !== petId);
-      setNotification({ show: false, petName: "" });
-
+  useEffect(() => {
+    return () => {
       if (notificationTimerRef.current) {
         clearTimeout(notificationTimerRef.current);
       }
-    } else {
-      // Liking
-      updatedLikes = [...likedPets, petId];
-      const pet = pets.find((p) => p.id === petId);
-
-      if (pet) {
-        setNotification({ show: true, petName: pet.name });
-
-        if (notificationTimerRef.current) {
-          clearTimeout(notificationTimerRef.current);
-        }
-
-        notificationTimerRef.current = setTimeout(() => {
-          setNotification({ show: false, petName: "" });
-        }, 3000);
-      }
-    }
-
-    setLikedPets(updatedLikes);
-  };
-  
+    };
+  }, []);
 
   useEffect(() => {
     const fetchPets = async () => {
       try {
         setLoading(true);
-        const q = query(collection(db, "pets"), where("adopted", "==", false));
-        const querySnapshot = await getDocs(q);
-
-        const petsData = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          personality: doc.data().personality || [],
-        }));
-
-        setPets(petsData);
-      } catch (error) {
-        console.error("Error fetching pets:", error);
+        setLoadError("");
+        const response = await listPets();
+        const petsData = Array.isArray(response) ? response : response?.results || [];
+        setPets(petsData.map(normalizePet));
+      } catch (fetchError) {
+        console.error("Error fetching pets:", fetchError);
+        setLoadError(fetchError.message || "Failed to load pets. Please try again.");
+        setPets([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchPets();
-}, [adoptedPets]);
+  }, []);
 
   useEffect(() => {
-    const fetchPetsRealtime = async () => {
+    const hydrateUserPetState = async () => {
+      if (!user || !getAccessToken()) {
+        setSavedPets([]);
+        setAdoptedPets([]);
+        return;
+      }
+
       try {
-        setLoading(true);
-        const q = query(
-          collection(db, "pets"),
-          where("adopted", "==", false)
+        const [wishlistResponse, applicationsResponse] = await Promise.all([
+          listWishlist(),
+          user.role === "adopter" ? listMyApplications() : Promise.resolve([]),
+        ]);
+
+        const wishlistItems = Array.isArray(wishlistResponse)
+          ? wishlistResponse
+          : wishlistResponse?.results || [];
+        setSavedPets(
+          wishlistItems
+            .map((item) => item.pet?.id)
+            .filter((petId) => petId !== undefined && petId !== null)
+            .map((petId) => String(petId)),
         );
 
-        
-
-        return 
-      } catch (error) {
-        console.error("Error fetching pets:", error);
-        setLoading(false);
+        const applications = Array.isArray(applicationsResponse)
+          ? applicationsResponse
+          : applicationsResponse?.results || [];
+        const activeApplicationPetIds = applications
+          .filter((application) => ["pending", "approved"].includes(application.status))
+          .map((application) => String(application.pet?.id))
+          .filter(Boolean);
+        setAdoptedPets(activeApplicationPetIds);
+      } catch (stateError) {
+        console.error("Error hydrating pet state:", stateError);
       }
     };
 
-    
+    hydrateUserPetState();
   }, [user]);
 
-  const handleTagToggle = (tag) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+  const addToPetPouch = async (pet) => {
+    if (!getAccessToken()) {
+      navigate("/login/user");
+      return;
+    }
+
+    if (user?.role === "rehomer" || user?.role === "shelter_admin") {
+      setActionMessage({
+        type: "error",
+        text: "Only adopters can submit interest for pets.",
+      });
+      return;
+    }
+
+    try {
+      setActionMessage({ type: "", text: "" });
+      await createAdoptionApplication({
+        pet_id: Number(pet.id),
+        message: `I'm interested in adopting ${pet.name}.`,
+      });
+      setAdoptedPets((prevPets) =>
+        prevPets.includes(pet.id) ? prevPets : [...prevPets, pet.id],
+      );
+      showNotification(`Your adoption interest for ${pet.name} was sent.`);
+    } catch (requestError) {
+      console.error("Error adding to pet pouch:", requestError);
+      setActionMessage({
+        type: "error",
+        text: requestError.message || "Failed to save your interest for this pet.",
+      });
+    }
+  };
+
+  const savePetToWishlist = async (pet) => {
+    if (!getAccessToken()) {
+      navigate("/login/user");
+      return;
+    }
+
+    try {
+      setActionMessage({ type: "", text: "" });
+      const response = await addToWishlist(pet.id);
+      setSavedPets((currentPets) =>
+        currentPets.includes(pet.id) ? currentPets : [...currentPets, pet.id],
+      );
+      updatePetPouchCount();
+
+      const message =
+        response?.created === false
+          ? `${pet.name} is already in your Pet Pouch.`
+          : `${pet.name} was saved to your Pet Pouch.`;
+
+      setActionMessage({
+        type: response?.created === false ? "info" : "success",
+        text: message,
+      });
+      showNotification(message);
+    } catch (saveError) {
+      console.error("Error saving pet to wishlist:", saveError);
+      setActionMessage({
+        type: "error",
+        text: saveError.message || "Failed to save this pet to your pouch.",
+      });
+    }
+  };
+
+  const handleLike = (petId) => {
+    setLikedPets((currentLikes) =>
+      currentLikes.includes(petId)
+        ? currentLikes.filter((id) => id !== petId)
+        : [...currentLikes, petId],
     );
   };
 
-  const handleUpdateImage = (e, petId) => {
-    const file = e.target.files[0];
-    if (!file) return;
-  
-    const reader = new FileReader();
-  
-    reader.onloadend = async () => {
-      const base64String = reader.result;
-  
+  const uploadImageToCloudinary = async (file) => {
+    const imageFormData = new FormData();
+    imageFormData.append("file", file);
+    imageFormData.append("upload_preset", "pets_presets");
+    imageFormData.append("cloud_name", "dgdf0svqx");
+
+    const response = await fetch(
+      "https://api.cloudinary.com/v1_1/dgdf0svqx/image/upload",
+      {
+        method: "POST",
+        body: imageFormData,
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Image upload failed. Please try again.");
+    }
+
+    const data = await response.json();
+    return data.secure_url;
+  };
+
+  const handleTagToggle = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((currentTag) => currentTag !== tag) : [...prev, tag],
+    );
+  };
+
+  const handleUpdateImage = (event, petId) => {
+    const file = event.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.match("image.*")) {
+      setActionMessage({
+        type: "error",
+        text: "Please select an image file (JPEG, PNG).",
+      });
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      setActionMessage({
+        type: "error",
+        text: "Image must be smaller than 5MB.",
+      });
+      return;
+    }
+
+    const uploadImage = async () => {
       try {
-        const petDocRef = doc(db, "pets", petId);
-        await updateDoc(petDocRef, { imageUrl: base64String });
-       
+        setActionMessage({ type: "", text: "" });
+        const uploadedImageUrl = await uploadImageToCloudinary(file);
+        await updatePet(petId, { image_url: uploadedImageUrl });
+
         setPets((prevPets) =>
           prevPets.map((pet) =>
-            pet.id === petId ? { ...pet, imageUrl: base64String } : pet
-          )
+            pet.id === petId ? { ...pet, imageUrl: uploadedImageUrl } : pet,
+          ),
         );
-      } catch (error) {
-        console.error("Error saving image:", error);
+        setActionMessage({
+          type: "success",
+          text: "Pet image updated successfully.",
+        });
+      } catch (updateError) {
+        console.error("Error saving image:", updateError);
+        setActionMessage({
+          type: "error",
+          text: updateError.message || "Failed to update pet image.",
+        });
       }
     };
-  
-    reader.readAsDataURL(file);
+
+    uploadImage();
   };
 
   const filteredGroupedPets = pets
     .filter(
       (pet) =>
         selectedTags.length === 0 ||
-        selectedTags.every((tag) => pet.personality.includes(tag))
+        selectedTags.every((tag) => (pet.personality || []).includes(tag)),
     )
     .filter((pet) => pet.name.toLowerCase().includes(searchTerm.toLowerCase()))
     .reduce((groups, pet) => {
-      const type = pet.type.charAt(0).toUpperCase() + pet.type.slice(1);
-      if (!groups[type]) groups[type] = [];
+      const type = toTitleCase(pet.type || "other");
+      if (!groups[type]) {
+        groups[type] = [];
+      }
       groups[type].push(pet);
       return groups;
     }, {});
 
   return (
     <div style={{ display: "flex", padding: "20px" }}>
-      {/* Sidebar filter */}
       <div
         style={{
           width: "280px",
@@ -339,7 +466,7 @@ const PetsList = () => {
         >
           Filter by Personality
         </h2>
-  
+
         <div style={{ maxHeight: "400px", overflowY: "auto" }}>
           {personalityTags.map((tag) => (
             <div
@@ -387,16 +514,14 @@ const PetsList = () => {
           ))}
         </div>
       </div>
-  
-      {/* Main Content */}
+
       <div style={{ flex: 1 }}>
-      
         <div style={{ marginBottom: "20px" }}>
           <input
             type="text"
             placeholder="Search by pet name..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(event) => setSearchTerm(event.target.value)}
             style={{
               width: "100%",
               padding: "10px",
@@ -406,10 +531,30 @@ const PetsList = () => {
             }}
           />
         </div>
-  
-        {/* Pets display */}
+
+        {actionMessage.text && (
+          <div
+            style={{
+              ...styles.statusMessage,
+              ...(actionMessage.type === "error"
+                ? styles.errorMessage
+                : styles.infoMessage),
+            }}
+          >
+            {actionMessage.text}
+          </div>
+        )}
+
         {loading ? (
           <p>Loading pets...</p>
+        ) : loadError ? (
+          <div style={{ ...styles.statusMessage, ...styles.errorMessage }}>
+            {loadError}
+          </div>
+        ) : Object.keys(filteredGroupedPets).length === 0 ? (
+          <div style={styles.emptyState}>
+            No pets matched your current search or filters.
+          </div>
         ) : (
           Object.entries(filteredGroupedPets).map(([type, petsArray]) => (
             <div key={type} style={{ marginBottom: "40px" }}>
@@ -417,11 +562,7 @@ const PetsList = () => {
               <div style={styles.petCardsContainer}>
                 {petsArray.map((pet) => (
                   <div key={pet.id} style={styles.petCard}>
-                    <img
-                      src={pet.imageUrl}
-                      alt={pet.name}
-                      style={styles.petImage}
-                    />
+                    <img src={pet.imageUrl} alt={pet.name} style={styles.petImage} />
                     <div style={styles.petName}>
                       {pet.name}
                       <span
@@ -431,25 +572,25 @@ const PetsList = () => {
                         }}
                         onClick={() => handleLike(pet.id)}
                       >
-                        {likedPets.includes(pet.id) ? "❤️" : "🤍"}
+                        {likedPets.includes(pet.id) ? "\u2665" : "\uD83E\uDD0D"}
                       </span>
                     </div>
-  
+
                     <p style={styles.petDescription}>{pet.breed}</p>
                     <p style={styles.petDescription}>{pet.age}</p>
                     <p style={styles.petPersonality}>
-                      {pet.personality.join(", ")}
+                      {(pet.personality || []).join(", ")}
                     </p>
-  
+
                     {user?.role === "rehomer" && (
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleUpdateImage(e, pet.id)}
+                        onChange={(event) => handleUpdateImage(event, pet.id)}
                         style={{ marginTop: "10px" }}
                       />
                     )}
-  
+
                     <button
                       style={
                         adoptedPets.includes(pet.id)
@@ -459,7 +600,13 @@ const PetsList = () => {
                       onClick={() => addToPetPouch(pet)}
                       disabled={adoptedPets.includes(pet.id)}
                     >
-                      {adoptedPets.includes(pet.id) ? "Adopted" : "Adopt me"}
+                      {adoptedPets.includes(pet.id) ? "Requested" : "Adopt me"}
+                    </button>
+                    <button
+                      style={styles.secondaryButton}
+                      onClick={() => savePetToWishlist(pet)}
+                    >
+                      {savedPets.includes(pet.id) ? "Saved to Pet Pouch" : "Save to Pet Pouch"}
                     </button>
                   </div>
                 ))}
@@ -468,15 +615,16 @@ const PetsList = () => {
           ))
         )}
       </div>
-      {/* Notification */}
+
       {notification.show && (
         <div style={styles.notification}>
           <span style={{ fontSize: "18px", fontWeight: "bold" }}>
-            {notification.petName} likes you too! Want to adopt {notification.petName}? 💓
+            {notification.text}
           </span>
         </div>
       )}
     </div>
   );
-}
-  export default PetsList;
+};
+
+export default PetsList;

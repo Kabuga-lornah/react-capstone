@@ -1,30 +1,87 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { db } from "../pages/firebaseconfig";
-import { auth } from "../pages/firebaseconfig";
+import {
+  addToWishlist,
+  createAdoptionApplication,
+  getAccessToken,
+  getPetDetail,
+  listMyApplications,
+  listWishlist,
+} from "../../services/api";
+import { PetPouchContext } from "./PetPouchContext";
+
+const toTitleCase = (value) =>
+  value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
+
+const getPetImageUrl = (pet) => {
+  const mainImage = pet.images?.find((image) => image.is_main);
+  const fallbackImage = pet.images?.[0];
+
+  return (
+    pet.imageUrl ||
+    pet.image_url ||
+    mainImage?.image_url ||
+    fallbackImage?.image_url ||
+    mainImage?.image ||
+    fallbackImage?.image ||
+    "/default-pet.jpg"
+  );
+};
+
+const getListedBy = (pet) => {
+  if (pet.shelter?.name) {
+    return pet.shelter.name;
+  }
+
+  if (pet.owner?.first_name || pet.owner?.last_name) {
+    return `${pet.owner.first_name || ""} ${pet.owner.last_name || ""}`.trim();
+  }
+
+  return pet.owner?.username || pet.rehomerName || "Unknown";
+};
+
+const normalizePet = (pet) => ({
+  ...pet,
+  type: pet.type || pet.species || "other",
+  personality: Array.isArray(pet.personality)
+    ? pet.personality
+    : Array.isArray(pet.personality_traits)
+      ? pet.personality_traits.map((trait) => toTitleCase(String(trait)))
+      : [],
+  imageUrl: getPetImageUrl(pet),
+  rehomerName: getListedBy(pet),
+  adopted:
+    pet.adopted !== undefined
+      ? pet.adopted
+      : pet.status
+        ? pet.status !== "available"
+        : false,
+  requirements: pet.requirements || "",
+});
 
 const PetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [pet, setPet] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [isInterested, setIsInterested] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const { updatePetPouchCount } = useContext(PetPouchContext);
 
   useEffect(() => {
     const fetchPet = async () => {
       try {
-        const docRef = doc(db, "pets", id);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          setPet({ id: docSnap.id, ...docSnap.data() });
-        } else {
-          setError("Pet not found");
-        }
+        setLoading(true);
+        setLoadError("");
+        const response = await getPetDetail(id);
+        setPet(normalizePet(response));
       } catch (err) {
-        setError("Failed to fetch pet details");
+        setLoadError(err.message || "Failed to fetch pet details");
+        setPet(null);
       } finally {
         setLoading(false);
       }
@@ -33,37 +90,102 @@ const PetDetail = () => {
     fetchPet();
   }, [id]);
 
+  useEffect(() => {
+    const fetchWishlistStatus = async () => {
+      if (!getAccessToken()) {
+        setIsSaved(false);
+        return;
+      }
+
+      try {
+        const response = await listWishlist();
+        const wishlistItems = Array.isArray(response) ? response : response?.results || [];
+        setIsSaved(
+          wishlistItems.some((item) => String(item.pet?.id) === String(id)),
+        );
+      } catch (wishlistError) {
+        console.error("Error fetching wishlist status:", wishlistError);
+      }
+    };
+
+    fetchWishlistStatus();
+  }, [id]);
+
+  useEffect(() => {
+    const fetchApplicationStatus = async () => {
+      if (!getAccessToken()) {
+        setIsInterested(false);
+        return;
+      }
+
+      try {
+        const response = await listMyApplications();
+        const applications = Array.isArray(response) ? response : response?.results || [];
+        setIsInterested(
+          applications.some(
+            (application) =>
+              String(application.pet?.id) === String(id) &&
+              ["pending", "approved"].includes(application.status),
+          ),
+        );
+      } catch (applicationError) {
+        console.error("Error fetching application status:", applicationError);
+      }
+    };
+
+    fetchApplicationStatus();
+  }, [id]);
+
   const handleAdoptInterest = async () => {
-    if (!auth.currentUser) {
+    if (!getAccessToken()) {
+      setActionError("Please log in to submit an adoption application.");
       navigate("/login/user");
       return;
     }
 
     try {
-      const petRef = doc(db, "pets", id);
-      await updateDoc(petRef, {
-        interestedUsers: [...(pet.interestedUsers || []), auth.currentUser.uid]
+      setIsSubmitting(true);
+      setActionError("");
+      await createAdoptionApplication({
+        pet_id: Number(id),
+        message: `I'm interested in adopting ${pet.name}.`,
       });
-      
-      // Create adoption application
-      await addDoc(collection(db, "adoptionApplications"), {
-        petId: id,
-        userId: auth.currentUser.uid,
-        petName: pet.name,
-        userName: auth.currentUser.displayName || "Anonymous",
-        userEmail: auth.currentUser.email,
-        status: "pending",
-        createdAt: new Date(),
-      });
-      
+
       setIsInterested(true);
+      updatePetPouchCount();
     } catch (err) {
-      setError("Failed to express interest: " + err.message);
+      setActionError(err.message || "Failed to submit adoption application.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveToPetPouch = async () => {
+    if (!getAccessToken()) {
+      setActionError("Please log in to save pets to your Pet Pouch.");
+      navigate("/login/user");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setActionError("");
+      const response = await addToWishlist(id);
+      setIsSaved(true);
+      updatePetPouchCount();
+
+      if (response?.created === false) {
+        setActionError(`${pet.name} is already saved in your Pet Pouch.`);
+      }
+    } catch (saveError) {
+      setActionError(saveError.message || "Failed to save this pet to your Pet Pouch.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   if (loading) return <p>Loading...</p>;
-  if (error) return <p>{error}</p>;
+  if (loadError) return <p>{loadError}</p>;
   if (!pet) return <p>Pet not found</p>;
 
   return (
@@ -132,6 +254,16 @@ const PetDetail = () => {
           
           {!pet.adopted && (
             <div style={styles.actionSection}>
+              {actionError && (
+                <p style={styles.errorMessage}>{actionError}</p>
+              )}
+              <button
+                onClick={handleSaveToPetPouch}
+                style={styles.saveButton}
+                disabled={isSaving || isSaved}
+              >
+                {isSaved ? "Saved to Pet Pouch" : isSaving ? "Saving..." : "Save to Pet Pouch"}
+              </button>
               {isInterested ? (
                 <p style={styles.successMessage}>
                   Thank you for your interest! The rehomer will contact you soon.
@@ -140,8 +272,9 @@ const PetDetail = () => {
                 <button 
                   onClick={handleAdoptInterest}
                   style={styles.adoptButton}
+                  disabled={isSubmitting}
                 >
-                  I'm Interested in Adopting
+                  {isSubmitting ? "Submitting..." : "I'm Interested in Adopting"}
                 </button>
               )}
             </div>
@@ -264,9 +397,26 @@ const styles = {
       backgroundColor: "#e69500",
     },
   },
+  saveButton: {
+    backgroundColor: "white",
+    color: "#FFA500",
+    border: "1px solid #FFA500",
+    padding: "12px 25px",
+    borderRadius: "5px",
+    fontSize: "16px",
+    fontWeight: "600",
+    cursor: "pointer",
+    marginRight: "12px",
+    marginBottom: "12px",
+  },
   successMessage: {
     color: "#4CAF50",
     fontSize: "16px",
+  },
+  errorMessage: {
+    color: "#c53030",
+    fontSize: "15px",
+    marginBottom: "12px",
   },
 };
 

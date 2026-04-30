@@ -1,9 +1,55 @@
 import React, { useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom"; // Added Link import
-import { auth } from "../pages/firebaseconfig";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
-import { db } from "../pages/firebaseconfig";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import {
+  getCurrentUser,
+  loginUser,
+  registerUser,
+} from "../../services/api";
+import { useAuth } from "./AuthContext";
+
+const mapRouteTypeToRole = (type) => {
+  if (type === "rehomer") {
+    return "rehomer";
+  }
+
+  if (type === "shelter") {
+    return "shelter_admin";
+  }
+
+  return "adopter";
+};
+
+const getRouteLabel = (type) => {
+  if (type === "rehomer") {
+    return "Rehomer";
+  }
+
+  if (type === "shelter") {
+    return "Shelter";
+  }
+
+  return "User";
+};
+
+const getRedirectPath = (role) => {
+  if (role === "rehomer") {
+    return "/rehomer-dashboard";
+  }
+
+  if (role === "shelter_admin") {
+    return "/";
+  }
+
+  return "/pets";
+};
+
+const splitName = (name) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.slice(1).join(" "),
+  };
+};
 
 const Signup = () => {
   const { type } = useParams();
@@ -11,69 +57,58 @@ const Signup = () => {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { setAuthenticatedUser } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    
+    setIsSubmitting(true);
+
     try {
-      // 1. Create user account with email/password
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      // 2. Update user profile with display name
-      await updateProfile(user, {
-        displayName: name
+      const normalizedEmail = email.trim().toLowerCase();
+      const { firstName, lastName } = splitName(name);
+      const role = mapRouteTypeToRole(type);
+
+      await registerUser({
+        username: normalizedEmail,
+        email: normalizedEmail,
+        password,
+        first_name: firstName,
+        last_name: lastName,
+        role,
       });
 
-      // 3. Save additional user data to Firestore
-      await setDoc(doc(db, "users", user.uid), {
-        uid: user.uid,
-        email: user.email,
-        displayName: name,
-        isRehomer: type === "rehomer",
-        userType: type,
-        createdAt: new Date(),
+      const tokenResponse = await loginUser({
+        username: normalizedEmail,
+        password,
       });
 
-      // 4. Immediate redirect after successful signup
-      if (type === "rehomer") {
-        navigate("/rehomer-dashboard");
-      } else {
-        // For regular users, redirect to login with success state
-        navigate("/login/user", { 
-          state: { 
-            signupSuccess: true,
-            email: user.email 
-          } 
-        });
-      }
-      
+      const profile = await getCurrentUser();
+      setAuthenticatedUser(profile, {
+        access: tokenResponse.access,
+        refresh: tokenResponse.refresh,
+      });
+
+      navigate(getRedirectPath(profile.role), { replace: true });
     } catch (err) {
-      // Enhanced error handling
-      let errorMessage = "Signup failed. Please try again.";
-      if (err.code === "auth/email-already-in-use") {
-        errorMessage = "This email is already registered.";
-      } else if (err.code === "auth/weak-password") {
-        errorMessage = "Password should be at least 6 characters.";
-      } else if (err.code === "auth/invalid-email") {
-        errorMessage = "Please enter a valid email address.";
-      }
-      setError(errorMessage);
+      setError(err.message || "Signup failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Sign Up as {type === "rehomer" ? "Rehomer" : "User"}</h2>
+      <h2 style={styles.title}>Sign Up as {getRouteLabel(type)}</h2>
       <form onSubmit={handleSubmit} style={styles.form}>
         {error && (
           <div style={styles.error}>
             <p>{error}</p>
           </div>
         )}
-        
+
         <div style={styles.inputGroup}>
           <label style={styles.label}>Full Name</label>
           <input
@@ -112,14 +147,14 @@ const Signup = () => {
           />
         </div>
 
-        <button type="submit" style={styles.button}>
-          Create Account
+        <button type="submit" style={styles.button} disabled={isSubmitting}>
+          {isSubmitting ? "Creating Account..." : "Create Account"}
         </button>
 
         <div style={styles.loginLink}>
           Already have an account?{" "}
-          <Link 
-            to={`/login/${type}`} 
+          <Link
+            to={`/login/${type === "rehomer" || type === "shelter" ? type : "user"}`}
             style={styles.link}
           >
             Log in
