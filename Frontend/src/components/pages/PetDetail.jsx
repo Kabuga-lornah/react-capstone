@@ -926,11 +926,6 @@ const PetDetail = () => {
     <div className="pd-shell">
       <style>{pageStyles}</style>
       <div className="pd-page">
-        <button type="button" onClick={() => navigate(-1)} className="pd-back-button">
-          <span aria-hidden="true">←</span>
-          Back to Pets
-        </button>
-
         <section className="pd-hero">
           <div className="pd-gallery-card">
             <div className="pd-image-frame">
@@ -1023,13 +1018,15 @@ const PetDetail = () => {
 
         <section className="pd-content-grid">
           <div className="pd-main-column">
-            <article className="pd-card">
-              <div className="pd-card-head">
-                <span className="pd-card-kicker">About</span>
-                <h2>Meet {pet.name}</h2>
-              </div>
-              <p className="pd-body-copy">{pet.description || "The rehomer has not added a full description yet."}</p>
-            </article>
+            {pet.description ? (
+              <article className="pd-card">
+                <div className="pd-card-head">
+                  <span className="pd-card-kicker">About</span>
+                  <h2>Meet {pet.name}</h2>
+                </div>
+                <p className="pd-body-copy">{pet.description}</p>
+              </article>
+            ) : null}
 
             <article className="pd-card">
               <div className="pd-card-head">
@@ -1181,19 +1178,6 @@ const PetDetail = () => {
               ) : (
                 <p className="pd-body-copy">Adopter contact tools only appear for available pets that you do not own.</p>
               )}
-            </article>
-
-            <article className="pd-card">
-              <div className="pd-card-head">
-                <span className="pd-card-kicker">Quick Notes</span>
-                <h2>What to ask next</h2>
-              </div>
-              <div className="pd-checklist">
-                <div className="pd-checklist-item">Ask about feeding routine and favorite foods.</div>
-                <div className="pd-checklist-item">Confirm vaccination and deworming records.</div>
-                <div className="pd-checklist-item">Find out how the pet behaves with children or other pets.</div>
-                <div className="pd-checklist-item">Ask what kind of space, walks, or play this pet needs.</div>
-              </div>
             </article>
 
             {canShowAdopterActions && !isInterested ? (
