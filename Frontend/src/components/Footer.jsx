@@ -1,6 +1,14 @@
 const Footer = () => {
     return (
-      <footer className="bg-[#FFA500] text-white py-6 px-4 mt-10">
+      <>
+      <style>{`
+        @media (max-width: 768px) {
+          .mff-footer {
+            display: none;
+          }
+        }
+      `}</style>
+      <footer className="mff-footer bg-[#FFA500] text-white py-6 px-4 mt-10">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center text-center md:text-left space-y-4 md:space-y-0">
           <div>
             <h2 className="text-xl font-bold">🐾 My FurryFriends</h2>
@@ -18,6 +26,7 @@ const Footer = () => {
           </div>
         </div>
       </footer>
+      </>
     );
   };
   

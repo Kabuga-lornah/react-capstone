@@ -1,9 +1,21 @@
 from rest_framework import serializers
+from django.utils import timezone
 
-from .models import AdoptionApplication, CustomUser, Pet, PetImage, PetWishlist, Shelter
+from .models import (
+    AdoptionApplication,
+    CustomUser,
+    Notification,
+    Pet,
+    PetImage,
+    PetWishlist,
+    Shelter,
+)
 
 
 class UserSerializer(serializers.ModelSerializer):
+    is_online = serializers.SerializerMethodField()
+    activity_status = serializers.SerializerMethodField()
+
     class Meta:
         model = CustomUser
         fields = [
@@ -15,9 +27,120 @@ class UserSerializer(serializers.ModelSerializer):
             'role',
             'phone_number',
             'bio',
+            'profile_photo_url',
+            'id_front_url',
+            'id_back_url',
+            'email_verified',
+            'phone_verified',
+            'rehomer_verification_status',
+            'rehomer_verification_submitted_at',
+            'rehomer_verification_reviewed_at',
+            'rehomer_verification_notes',
+            'last_seen',
+            'is_online',
+            'activity_status',
             'organization',
         ]
-        read_only_fields = ['id', 'role', 'organization']
+        read_only_fields = [
+            'id',
+            'role',
+            'organization',
+            'email_verified',
+            'phone_verified',
+            'rehomer_verification_status',
+            'rehomer_verification_submitted_at',
+            'rehomer_verification_reviewed_at',
+            'rehomer_verification_notes',
+            'last_seen',
+            'is_online',
+            'activity_status',
+        ]
+
+    def get_is_online(self, obj):
+        return obj.is_online
+
+    def get_activity_status(self, obj):
+        return obj.activity_status
+
+
+class PublicUserSerializer(serializers.ModelSerializer):
+    display_name = serializers.SerializerMethodField()
+    is_online = serializers.SerializerMethodField()
+    activity_status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            'id',
+            'username',
+            'first_name',
+            'last_name',
+            'email',
+            'phone_number',
+            'profile_photo_url',
+            'role',
+            'display_name',
+            'is_online',
+            'activity_status',
+        ]
+        read_only_fields = fields
+
+    def get_display_name(self, obj):
+        full_name = f"{obj.first_name or ''} {obj.last_name or ''}".strip()
+        return full_name or obj.username or obj.email or "User"
+
+    def get_is_online(self, obj):
+        return obj.is_online
+
+    def get_activity_status(self, obj):
+        return obj.activity_status
+
+
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = [
+            'first_name',
+            'last_name',
+            'email',
+            'phone_number',
+            'bio',
+            'profile_photo_url',
+            'id_front_url',
+            'id_back_url',
+        ]
+
+
+class RehomerVerificationSubmitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ['phone_number', 'profile_photo_url', 'id_front_url', 'id_back_url']
+
+    def validate(self, attrs):
+        user = self.instance
+        phone_number = attrs.get('phone_number', user.phone_number if user else '')
+        id_front_url = attrs.get('id_front_url', user.id_front_url if user else '')
+        id_back_url = attrs.get('id_back_url', user.id_back_url if user else '')
+
+        if not phone_number:
+            raise serializers.ValidationError({'phone_number': 'Phone number is required.'})
+        if not id_front_url:
+            raise serializers.ValidationError({'id_front_url': 'Front ID image is required.'})
+        if not id_back_url:
+            raise serializers.ValidationError({'id_back_url': 'Back ID image is required.'})
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        instance.rehomer_verification_status = CustomUser.PENDING
+        instance.rehomer_verification_submitted_at = timezone.now()
+        instance.rehomer_verification_reviewed_at = None
+        instance.rehomer_verification_notes = ""
+        instance.save()
+        return instance
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -39,7 +162,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class ShelterSerializer(serializers.ModelSerializer):
-    owner = UserSerializer(read_only=True)
+    owner = PublicUserSerializer(read_only=True)
 
     class Meta:
         model = Shelter
@@ -70,10 +193,11 @@ class PetImageSerializer(serializers.ModelSerializer):
 
 
 class PetSerializer(serializers.ModelSerializer):
-    owner = UserSerializer(read_only=True)
+    owner = PublicUserSerializer(read_only=True)
     shelter = ShelterSerializer(read_only=True)
     images = PetImageSerializer(many=True, read_only=True)
     image_url = serializers.URLField(write_only=True, required=False, allow_blank=True)
+    additional_image_url = serializers.URLField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = Pet
@@ -90,6 +214,14 @@ class PetSerializer(serializers.ModelSerializer):
             'country',
             'description',
             'personality_traits',
+            'energy_level',
+            'care_level',
+            'space_needed',
+            'good_with_children',
+            'good_with_other_pets',
+            'grooming_needs',
+            'noise_level',
+            'apartment_friendly',
             'is_vaccinated',
             'is_dewormed',
             'is_neutered',
@@ -99,6 +231,7 @@ class PetSerializer(serializers.ModelSerializer):
             'shelter',
             'images',
             'image_url',
+            'additional_image_url',
             'created_at',
             'updated_at',
         ]
@@ -122,6 +255,7 @@ class PetSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         image_url = validated_data.pop('image_url', '')
+        additional_image_url = validated_data.pop('additional_image_url', '')
         pet = super().update(instance, validated_data)
 
         if image_url:
@@ -137,11 +271,18 @@ class PetSerializer(serializers.ModelSerializer):
                     is_main=True,
                 )
 
+        if additional_image_url:
+            PetImage.objects.create(
+                pet=pet,
+                image_url=additional_image_url,
+                is_main=False,
+            )
+
         return pet
 
 
 class AdoptionApplicationSerializer(serializers.ModelSerializer):
-    applicant = UserSerializer(read_only=True)
+    applicant = PublicUserSerializer(read_only=True)
     pet = PetSerializer(read_only=True)
     pet_id = serializers.PrimaryKeyRelatedField(
         queryset=Pet.objects.all(), source='pet', write_only=True,
@@ -185,3 +326,24 @@ class PetWishlistSerializer(serializers.ModelSerializer):
         model = PetWishlist
         fields = ['id', 'pet', 'pet_id', 'added_at']
         read_only_fields = ['id', 'pet', 'added_at']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    recipient = PublicUserSerializer(read_only=True)
+    actor = PublicUserSerializer(read_only=True)
+    pet = PetSerializer(read_only=True)
+
+    class Meta:
+        model = Notification
+        fields = [
+            'id',
+            'recipient',
+            'actor',
+            'pet',
+            'type',
+            'title',
+            'message',
+            'read',
+            'created_at',
+        ]
+        read_only_fields = fields

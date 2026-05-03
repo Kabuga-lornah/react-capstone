@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
 import {
   clearTokens,
   getCurrentUser,
@@ -47,9 +47,10 @@ const getLoginLinkType = (type) => (type === "rehomer" || type === "shelter" ? t
 
 const Login = () => {
   const { type } = useParams();
-  const [email, setEmail] = useState("");
+  const location = useLocation();
+  const [email, setEmail] = useState(location.state?.email || "");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(location.state?.successMessage || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const { setAuthenticatedUser, logout } = useAuth();

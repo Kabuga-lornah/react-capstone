@@ -1,22 +1,92 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listPets } from "../../services/api";
 import { useAuth } from "./AuthContext";
+import Onboarding from "./Onboarding";
+
+const PET_CATEGORIES = [
+  { label: "All", emoji: "🐾" },
+  { label: "Dogs", emoji: "🐶" },
+  { label: "Cats", emoji: "🐱" },
+  { label: "Rabbits", emoji: "🐰" },
+  { label: "Birds", emoji: "🐦" },
+  { label: "Other", emoji: "✨" },
+];
+
+const CARE_TIPS = [
+  "New pets settle faster with a quiet corner.",
+  "Clear health records make adoption safer.",
+  "Ask about vaccination and deworming before adopting.",
+  "Give pets time to adjust before expecting perfect behavior.",
+];
+
+const QUICK_ACTIONS = [
+  {
+    key: "browse",
+    title: "Browse Pets",
+    subtitle: "See listings",
+    icon: "🐾",
+    to: "/pets",
+    show: () => true,
+  },
+  {
+    key: "quiz",
+    title: "Take Quiz",
+    subtitle: "Find your fit",
+    icon: "✨",
+    to: "/quiz",
+    show: () => true,
+  },
+  {
+    key: "pouch",
+    title: "Pet Pouch",
+    subtitle: "Saved pets",
+    icon: "🧡",
+    to: "/pet-pouch",
+    show: (role) => role === "adopter" || role === "user",
+  },
+  {
+    key: "applications",
+    title: "My Applications",
+    subtitle: "Track requests",
+    icon: "📋",
+    to: "/my-listing",
+    show: (role) => role === "adopter" || role === "user",
+  },
+  {
+    key: "add-pet",
+    title: "Add Pet",
+    subtitle: "Create listing",
+    icon: "➕",
+    to: "/add-pet",
+    show: (role) => role === "rehomer" || role === "shelter_admin",
+  },
+  {
+    key: "dashboard",
+    title: "Dashboard",
+    subtitle: "Manage activity",
+    icon: "📊",
+    to: "/rehomer-dashboard",
+    show: (role) => role === "rehomer" || role === "shelter_admin",
+  },
+];
+
+const ONBOARDING_STORAGE_KEY = "hasSeenOnboarding";
 
 const toTitleCase = (value) =>
   value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
 
 const getPetImageUrl = (pet) => {
-  const mainImage = pet.images?.find((image) => image.is_main);
-  const fallbackImage = pet.images?.[0];
+  const main = pet.images?.find((item) => item.is_main);
+  const fallback = pet.images?.[0];
 
   return (
     pet.imageUrl ||
     pet.image_url ||
-    mainImage?.image_url ||
-    fallbackImage?.image_url ||
-    mainImage?.image ||
-    fallbackImage?.image ||
+    main?.image_url ||
+    fallback?.image_url ||
+    main?.image ||
+    fallback?.image ||
     "/default-pet.jpg"
   );
 };
@@ -33,910 +103,1020 @@ const normalizePet = (pet) => ({
   imageUrl: getPetImageUrl(pet),
 });
 
-const trustStats = [
-  {
-    title: "Verified pet profiles",
-    description: "Browse clear pet details, photos, and care notes before you apply.",
-  },
-  {
-    title: "Safe adoption requests",
-    description: "Adoption interest is handled through tracked application flows.",
-  },
-  {
-    title: "Rehomer dashboards",
-    description: "Pet owners can manage listings, requests, and updates in one place.",
-  },
-  {
-    title: "Pet Pouch saving",
-    description: "Save promising companions so you can revisit them anytime.",
-  },
-];
+const getPetLocation = (pet) =>
+  pet.location ||
+  [pet.city, pet.state, pet.country].filter(Boolean).join(", ") ||
+  "Location coming soon";
 
-const howItWorksSteps = [
-  {
-    title: "Browse available pets",
-    description: "Explore dogs, cats, birds, rabbits, and more with helpful profile details.",
-  },
-  {
-    title: "Save favorites to Pet Pouch",
-    description: "Keep your top matches in one spot while you compare personalities and care needs.",
-  },
-  {
-    title: "Apply for adoption",
-    description: "Send your interest through the app when you feel ready to meet a pet.",
-  },
-  {
-    title: "Rehomer reviews and approves",
-    description: "Pet owners can review applications, respond, and move the adoption forward safely.",
-  },
-];
+const getPetStatus = (pet) => toTitleCase(pet.status || "available");
 
-const funFacts = [
-  "Dogs read human body language amazingly well and often notice our feelings before we say a word.",
-  "Cats use slow blinks as a sign of comfort, trust, and relaxed affection.",
-  "Rabbits do happy jumps called binkies when they feel playful and safe.",
-  "Parrots need daily enrichment because many are clever problem-solvers who get bored easily.",
-  "Ducks are social animals and usually feel happiest with routine, space, and companionship.",
-  "Many reptiles thrive best when their temperature and lighting stay steady every day.",
-];
+const getPetCategory = (pet) => {
+  const type = String(pet.type || pet.species || "").toLowerCase();
 
-const careTips = [
-  {
-    title: "Prepare your home",
-    description: "Set up bedding, food bowls, safe toys, and a quiet resting area before adoption day.",
-  },
-  {
-    title: "Budget beyond the basics",
-    description: "Plan for food, grooming, routine vet visits, and emergency care before bringing a pet home.",
-  },
-  {
-    title: "Ask health questions",
-    description: "Check vaccination, deworming, feeding routines, and medical history before you commit.",
-  },
-  {
-    title: "Give pets time to adjust",
-    description: "New pets often need patience, gentle routines, and calm spaces while they settle in.",
-  },
-];
+  if (type.includes("dog")) return "Dogs";
+  if (type.includes("cat")) return "Cats";
+  if (type.includes("rabbit") || type.includes("bunny")) return "Rabbits";
+  if (type.includes("bird") || type.includes("parrot")) return "Birds";
+
+  return "Other";
+};
 
 const Home = () => {
-  const [liked, setLiked] = useState([]);
-  const [featuredPets, setFeaturedPets] = useState([]);
+  const navigate = useNavigate();
+  const { user, userData } = useAuth();
+
+  const [pets, setPets] = useState([]);
+  const [likedPetIds, setLikedPetIds] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [factIndex, setFactIndex] = useState(0);
-  const navigate = useNavigate();
-  const { user } = useAuth();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [tipIndex, setTipIndex] = useState(0);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  const role = userData?.role || user?.role || null;
+  const firstName =
+    userData?.first_name ||
+    userData?.displayName?.split(" ")?.[0] ||
+    user?.displayName?.split(" ")?.[0] ||
+    user?.email?.split("@")?.[0] ||
+    "friend";
 
   useEffect(() => {
-    const fetchFeaturedPets = async () => {
+    if (typeof window === "undefined") return;
+
+    const hasSeenOnboarding =
+      window.localStorage.getItem(ONBOARDING_STORAGE_KEY) === "true";
+
+    setShowOnboarding(!hasSeenOnboarding);
+    setOnboardingChecked(true);
+  }, []);
+
+  useEffect(() => {
+    const fetchPets = async () => {
       try {
         setLoading(true);
         setError("");
 
         const response = await listPets();
         const petsData = Array.isArray(response) ? response : response?.results || [];
-        const normalizedPets = petsData.map(normalizePet).slice(0, 4);
+        const normalizedPets = petsData.map(normalizePet);
 
-        setFeaturedPets(normalizedPets);
-        setLiked(normalizedPets.map(() => false));
+        setPets(normalizedPets);
       } catch (fetchError) {
-        console.error("Error fetching featured pets:", fetchError);
-        setError(fetchError.message || "Failed to load featured pets.");
-        setFeaturedPets([]);
-        setLiked([]);
+        setError(fetchError.message || "Failed to load pets.");
+        setPets([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchFeaturedPets();
+    fetchPets();
   }, []);
 
-  const toggleLike = (index) => {
-    const updatedLikes = [...liked];
-    updatedLikes[index] = !updatedLikes[index];
-    setLiked(updatedLikes);
-  };
+  const quickActions = useMemo(
+    () => QUICK_ACTIONS.filter((item) => item.show(role)),
+    [role],
+  );
 
-  const showAnotherFact = () => {
-    setFactIndex((currentIndex) => (currentIndex + 1) % funFacts.length);
-  };
+  const filteredPets = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
 
-  const handleAdoptClick = (petId) => {
-    if (!user) {
-      navigate("/login/user");
-      return;
+    return pets.filter((pet) => {
+      const categoryMatch =
+        activeCategory === "All" || getPetCategory(pet) === activeCategory;
+
+      if (!categoryMatch) return false;
+      if (!query) return true;
+
+      const searchable = [
+        pet.name,
+        pet.breed,
+        pet.type,
+        pet.species,
+        getPetLocation(pet),
+        ...(pet.personality || []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(query);
+    });
+  }, [pets, activeCategory, searchQuery]);
+
+  const featuredPets = filteredPets.slice(0, 8);
+  const currentTip = CARE_TIPS[tipIndex];
+
+  const handleFinishOnboarding = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ONBOARDING_STORAGE_KEY, "true");
     }
 
-    navigate(`/pet/${petId}`);
+    setShowOnboarding(false);
+    setOnboardingChecked(true);
   };
 
-  const getPetLocation = (pet) =>
-    pet.location ||
-    [pet.city, pet.state, pet.country].filter(Boolean).join(", ") ||
-    "Location coming soon";
+  const handleResetOnboarding = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(ONBOARDING_STORAGE_KEY);
+    }
 
-  const getPetStatus = (pet) => toTitleCase(pet.status || "available");
-
-  const styles = {
-    page: {
-      background:
-        "linear-gradient(180deg, #fff9f0 0%, #fffefb 26%, #ffffff 100%)",
-      color: "#2d3748",
-    },
-    sectionShell: {
-      width: "min(1180px, calc(100% - 32px))",
-      margin: "0 auto",
-    },
-    heroSection: {
-      padding: "48px 0 28px",
-    },
-    heroCard: {
-      background:
-        "linear-gradient(135deg, rgba(255,165,0,0.16) 0%, rgba(255,243,224,0.95) 45%, rgba(255,255,255,1) 100%)",
-      borderRadius: "28px",
-      padding: "clamp(24px, 4vw, 44px)",
-      boxShadow: "0 18px 42px rgba(0,0,0,0.08)",
-      border: "1px solid rgba(255,165,0,0.14)",
-      overflow: "hidden",
-      position: "relative",
-    },
-    heroGlow: {
-      position: "absolute",
-      right: "-60px",
-      top: "-40px",
-      width: "220px",
-      height: "220px",
-      borderRadius: "50%",
-      background: "rgba(255,165,0,0.14)",
-      filter: "blur(8px)",
-    },
-    heroGrid: {
-      position: "relative",
-      zIndex: 1,
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-      gap: "28px",
-      alignItems: "center",
-    },
-    heroTextBlock: {
-      maxWidth: "620px",
-    },
-    eyebrow: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: "8px",
-      padding: "8px 14px",
-      borderRadius: "999px",
-      backgroundColor: "#fff4df",
-      color: "#9c5f00",
-      fontWeight: "700",
-      fontSize: "13px",
-      marginBottom: "18px",
-    },
-    heroTitle: {
-      fontSize: "clamp(2.2rem, 5vw, 4rem)",
-      lineHeight: 1.05,
-      margin: "0 0 18px",
-      color: "#1f2937",
-    },
-    heroDescription: {
-      fontSize: "clamp(1rem, 2vw, 1.15rem)",
-      lineHeight: 1.8,
-      color: "#4a5568",
-      marginBottom: "24px",
-      maxWidth: "560px",
-    },
-    heroActions: {
-      display: "flex",
-      flexWrap: "wrap",
-      gap: "14px",
-      marginBottom: "22px",
-    },
-    primaryButton: {
-      backgroundColor: "#FFA500",
-      color: "#ffffff",
-      border: "none",
-      borderRadius: "999px",
-      cursor: "pointer",
-      fontSize: "15px",
-      fontWeight: "700",
-      padding: "14px 22px",
-      boxShadow: "0 10px 20px rgba(255,165,0,0.24)",
-    },
-    secondaryButton: {
-      backgroundColor: "#ffffff",
-      color: "#9c5f00",
-      border: "1px solid rgba(255,165,0,0.4)",
-      borderRadius: "999px",
-      cursor: "pointer",
-      fontSize: "15px",
-      fontWeight: "700",
-      padding: "14px 22px",
-    },
-    heroSupportText: {
-      color: "#6b7280",
-      fontSize: "15px",
-      lineHeight: 1.7,
-    },
-    heroVisual: {
-      display: "grid",
-      gap: "16px",
-      alignContent: "center",
-    },
-    heroImageFrame: {
-      backgroundColor: "#ffffff",
-      borderRadius: "24px",
-      padding: "18px",
-      boxShadow: "0 16px 30px rgba(0,0,0,0.08)",
-      border: "1px solid rgba(255,165,0,0.12)",
-    },
-    heroImage: {
-      width: "100%",
-      height: "clamp(240px, 34vw, 380px)",
-      objectFit: "cover",
-      borderRadius: "18px",
-      display: "block",
-    },
-    heroMiniCards: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-      gap: "12px",
-    },
-    heroMiniCard: {
-      backgroundColor: "#ffffff",
-      borderRadius: "18px",
-      padding: "14px 16px",
-      border: "1px solid rgba(255,165,0,0.14)",
-      boxShadow: "0 10px 22px rgba(0,0,0,0.06)",
-    },
-    heroMiniValue: {
-      fontSize: "1.4rem",
-      fontWeight: "800",
-      color: "#FFA500",
-      marginBottom: "6px",
-    },
-    trustStatsGrid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-      gap: "16px",
-      marginTop: "24px",
-    },
-    trustCard: {
-      backgroundColor: "#ffffff",
-      borderRadius: "18px",
-      padding: "18px",
-      boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
-      border: "1px solid rgba(255,165,0,0.12)",
-    },
-    trustTitle: {
-      fontSize: "1rem",
-      fontWeight: "800",
-      marginBottom: "8px",
-      color: "#1f2937",
-    },
-    trustText: {
-      color: "#5f6c7b",
-      lineHeight: 1.6,
-      fontSize: "14px",
-      margin: 0,
-    },
-    section: {
-      padding: "40px 0",
-    },
-    sectionHeader: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "end",
-      gap: "16px",
-      flexWrap: "wrap",
-      marginBottom: "22px",
-    },
-    sectionTitle: {
-      fontSize: "clamp(1.8rem, 3vw, 2.4rem)",
-      margin: "0 0 8px",
-      color: "#1f2937",
-    },
-    sectionDescription: {
-      margin: 0,
-      color: "#5f6c7b",
-      lineHeight: 1.7,
-      maxWidth: "700px",
-      fontSize: "15px",
-    },
-    featuredGrid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-      gap: "20px",
-    },
-    petCard: {
-      backgroundColor: "#ffffff",
-      borderRadius: "22px",
-      overflow: "hidden",
-      boxShadow: "0 14px 28px rgba(0,0,0,0.07)",
-      border: "1px solid rgba(255,165,0,0.12)",
-      display: "flex",
-      flexDirection: "column",
-    },
-    petImageWrap: {
-      position: "relative",
-      backgroundColor: "#fff7eb",
-    },
-    petImage: {
-      width: "100%",
-      height: "220px",
-      objectFit: "cover",
-      display: "block",
-    },
-    petBadgeRow: {
-      position: "absolute",
-      top: "14px",
-      left: "14px",
-      right: "14px",
-      display: "flex",
-      justifyContent: "space-between",
-      gap: "10px",
-      alignItems: "center",
-    },
-    statusBadge: {
-      backgroundColor: "rgba(255,255,255,0.94)",
-      color: "#1f2937",
-      borderRadius: "999px",
-      padding: "7px 12px",
-      fontSize: "12px",
-      fontWeight: "800",
-      border: "1px solid rgba(0,0,0,0.05)",
-    },
-    likeButton: {
-      width: "38px",
-      height: "38px",
-      borderRadius: "50%",
-      border: "none",
-      backgroundColor: "rgba(255,255,255,0.94)",
-      cursor: "pointer",
-      fontSize: "18px",
-      boxShadow: "0 6px 14px rgba(0,0,0,0.08)",
-    },
-    petBody: {
-      padding: "18px",
-      display: "flex",
-      flexDirection: "column",
-      gap: "12px",
-      flex: 1,
-    },
-    petHeadingRow: {
-      display: "flex",
-      justifyContent: "space-between",
-      gap: "12px",
-      alignItems: "start",
-    },
-    petName: {
-      margin: 0,
-      fontSize: "1.2rem",
-      color: "#1f2937",
-    },
-    petType: {
-      color: "#9c5f00",
-      fontWeight: "700",
-      fontSize: "13px",
-      textTransform: "uppercase",
-      letterSpacing: "0.06em",
-    },
-    petMeta: {
-      color: "#5f6c7b",
-      fontSize: "14px",
-      lineHeight: 1.6,
-      margin: 0,
-    },
-    tagRow: {
-      display: "flex",
-      flexWrap: "wrap",
-      gap: "8px",
-    },
-    tag: {
-      backgroundColor: "#fff4df",
-      color: "#9c5f00",
-      borderRadius: "999px",
-      padding: "6px 10px",
-      fontSize: "12px",
-      fontWeight: "700",
-    },
-    petActionRow: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: "12px",
-      marginTop: "auto",
-      flexWrap: "wrap",
-    },
-    actionButton: {
-      backgroundColor: "#FFA500",
-      color: "#ffffff",
-      border: "none",
-      borderRadius: "999px",
-      cursor: "pointer",
-      fontSize: "14px",
-      fontWeight: "800",
-      padding: "12px 18px",
-      minWidth: "136px",
-    },
-    plainButton: {
-      backgroundColor: "transparent",
-      color: "#9c5f00",
-      border: "none",
-      cursor: "pointer",
-      fontWeight: "700",
-      fontSize: "14px",
-      padding: 0,
-    },
-    infoGrid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-      gap: "18px",
-    },
-    infoCard: {
-      backgroundColor: "#ffffff",
-      borderRadius: "20px",
-      padding: "22px",
-      boxShadow: "0 12px 26px rgba(0,0,0,0.06)",
-      border: "1px solid rgba(255,165,0,0.1)",
-    },
-    stepNumber: {
-      width: "42px",
-      height: "42px",
-      borderRadius: "50%",
-      backgroundColor: "#fff4df",
-      color: "#9c5f00",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontWeight: "800",
-      marginBottom: "14px",
-    },
-    cardTitle: {
-      margin: "0 0 10px",
-      fontSize: "1.05rem",
-      color: "#1f2937",
-    },
-    cardText: {
-      margin: 0,
-      color: "#5f6c7b",
-      lineHeight: 1.7,
-      fontSize: "14px",
-    },
-    factSection: {
-      padding: "40px 0",
-    },
-    factCard: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-      gap: "20px",
-      background:
-        "linear-gradient(135deg, #fff3de 0%, #ffffff 50%, #fff9ef 100%)",
-      borderRadius: "26px",
-      padding: "clamp(22px, 4vw, 34px)",
-      boxShadow: "0 14px 30px rgba(0,0,0,0.07)",
-      border: "1px solid rgba(255,165,0,0.12)",
-      alignItems: "center",
-    },
-    factLabel: {
-      display: "inline-block",
-      backgroundColor: "#ffffff",
-      color: "#9c5f00",
-      padding: "7px 12px",
-      borderRadius: "999px",
-      fontSize: "12px",
-      fontWeight: "800",
-      marginBottom: "14px",
-    },
-    factText: {
-      margin: "0 0 18px",
-      fontSize: "clamp(1.05rem, 2vw, 1.3rem)",
-      lineHeight: 1.8,
-      color: "#2d3748",
-    },
-    factButton: {
-      backgroundColor: "#1f2937",
-      color: "#ffffff",
-      border: "none",
-      borderRadius: "999px",
-      cursor: "pointer",
-      padding: "12px 18px",
-      fontWeight: "700",
-      fontSize: "14px",
-    },
-    factAside: {
-      backgroundColor: "rgba(255,255,255,0.8)",
-      borderRadius: "20px",
-      padding: "18px",
-      border: "1px solid rgba(255,165,0,0.1)",
-    },
-    factAsideTitle: {
-      margin: "0 0 10px",
-      color: "#1f2937",
-      fontSize: "1rem",
-    },
-    factAsideText: {
-      margin: 0,
-      color: "#5f6c7b",
-      lineHeight: 1.7,
-      fontSize: "14px",
-    },
-    quizSection: {
-      padding: "40px 0",
-    },
-    quizCard: {
-      backgroundColor: "#ffffff",
-      borderRadius: "26px",
-      padding: "clamp(22px, 4vw, 34px)",
-      boxShadow: "0 14px 30px rgba(0,0,0,0.06)",
-      border: "1px solid rgba(255,165,0,0.12)",
-    },
-    quizContent: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-      gap: "30px",
-      alignItems: "center",
-    },
-    quizImageWrap: {
-      backgroundColor: "#fff9ef",
-      borderRadius: "22px",
-      padding: "12px",
-    },
-    quizImage: {
-      width: "100%",
-      height: "320px",
-      objectFit: "cover",
-      borderRadius: "16px",
-      display: "block",
-    },
-    missionSection: {
-      padding: "40px 0 60px",
-    },
-    missionCard: {
-      background:
-        "linear-gradient(135deg, #fffaf0 0%, #ffffff 55%, #fff7e3 100%)",
-      borderRadius: "26px",
-      padding: "clamp(24px, 4vw, 38px)",
-      boxShadow: "0 14px 30px rgba(0,0,0,0.06)",
-      border: "1px solid rgba(255,165,0,0.1)",
-    },
-    missionGrid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-      gap: "18px",
-      marginTop: "24px",
-    },
-    missionMiniCard: {
-      backgroundColor: "#ffffff",
-      borderRadius: "18px",
-      padding: "18px",
-      border: "1px solid rgba(255,165,0,0.1)",
-    },
-    missionMiniTitle: {
-      margin: "0 0 8px",
-      fontSize: "1rem",
-      color: "#1f2937",
-    },
-    missionMiniText: {
-      margin: 0,
-      color: "#5f6c7b",
-      lineHeight: 1.65,
-      fontSize: "14px",
-    },
-    statusMessage: {
-      maxWidth: "700px",
-      margin: "0 auto",
-      padding: "18px",
-      borderRadius: "16px",
-      backgroundColor: "#fffaf0",
-      color: "#555",
-      lineHeight: 1.7,
-    },
-    errorMessage: {
-      backgroundColor: "#fff5f5",
-      color: "#c53030",
-      border: "1px solid #feb2b2",
-    },
+    setShowOnboarding(true);
   };
+
+  const toggleLike = (petId) => {
+    setLikedPetIds((current) => ({
+      ...current,
+      [petId]: !current[petId],
+    }));
+  };
+
+  const handleAnotherTip = () => {
+    setTipIndex((current) => (current + 1) % CARE_TIPS.length);
+  };
+
+  const greetingText = user
+    ? `Hi, ${firstName} 👋`
+    : "Find your next furry friend";
+
+  const feedTitle =
+    searchQuery.trim() || activeCategory !== "All" ? "Matching pets" : "Pets near you";
+
+  if (!onboardingChecked) {
+    return null;
+  }
+
+  if (showOnboarding) {
+    return (
+      <Onboarding
+        onFinish={handleFinishOnboarding}
+        onSkip={handleFinishOnboarding}
+      />
+    );
+  }
 
   return (
-    <div style={styles.page}>
-      <section style={styles.heroSection}>
-        <div style={styles.sectionShell}>
-          <div style={styles.heroCard}>
-            <div style={styles.heroGlow}></div>
-            <div style={styles.heroGrid}>
-              <div style={styles.heroTextBlock}>
-                <div style={styles.eyebrow}>Warm, safe, joyful pet adoption</div>
-                <h1 style={styles.heroTitle}>
-                  Find a pet companion who truly fits your home and heart.
-                </h1>
-                <p style={styles.heroDescription}>
-                  My FurryFriends helps adopters explore trusted pet profiles, save
-                  favorites, apply safely, and connect with caring rehomers who
-                  want every animal to land in the right forever home.
-                </p>
-                <div style={styles.heroActions}>
-                  <button
-                    style={styles.primaryButton}
-                    onClick={() => navigate("/pets")}
-                  >
-                    Browse Pets
-                  </button>
-                  <button
-                    style={styles.secondaryButton}
-                    onClick={() => navigate("/quiz")}
-                  >
-                    Take Quiz
-                  </button>
-                </div>
-                <p style={styles.heroSupportText}>
-                  Whether you&apos;re searching for a calm cuddle buddy, an energetic
-                  walking partner, or a curious little character, we make the first
-                  steps feel welcoming and easy to follow.
-                </p>
-              </div>
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "linear-gradient(180deg, #fffaf1 0%, #fff7ea 55%, #fff3df 100%)",
+        color: "#1a1008",
+        fontFamily: "'Nunito', system-ui, sans-serif",
+        overflowX: "hidden",
+      }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,900&family=Nunito:wght@400;600;700;800;900&display=swap');
 
-              <div style={styles.heroVisual}>
-                <div style={styles.heroImageFrame}>
-                  <img
-                    src="/bunny.jpg"
-                    alt="Happy pets waiting for adoption"
-                    style={styles.heroImage}
-                  />
-                </div>
-                <div style={styles.heroMiniCards}>
-                  <div style={styles.heroMiniCard}>
-                    <div style={styles.heroMiniValue}>4 steps</div>
-                    <div style={styles.cardText}>From browsing to approved adoption.</div>
-                  </div>
-                  <div style={styles.heroMiniCard}>
-                    <div style={styles.heroMiniValue}>1 pouch</div>
-                    <div style={styles.cardText}>Save favorites and revisit them fast.</div>
-                  </div>
-                </div>
-              </div>
+        * { box-sizing: border-box; }
+
+        :root {
+          --home-amber: #ffa500;
+          --home-amber-deep: #e8750a;
+          --home-amber-soft: #fff0cf;
+          --home-cream: #fffaf1;
+          --home-cream-strong: #fffdf8;
+          --home-brown: #5a3200;
+          --home-brown-soft: #7a572d;
+          --home-muted: #947b5b;
+          --home-border: rgba(255, 165, 0, 0.14);
+          --home-shadow: 0 12px 30px rgba(120, 60, 0, 0.08);
+          --home-shadow-soft: 0 6px 18px rgba(255, 165, 0, 0.10);
+          --home-radius-xl: 28px;
+          --home-radius-lg: 22px;
+          --home-radius-md: 16px;
+          --home-radius-pill: 999px;
+        }
+
+        .home-shell {
+          width: min(100%, 1120px);
+          margin: 0 auto;
+          padding: 18px 16px 110px;
+        }
+
+        .home-stack {
+          display: grid;
+          gap: 18px;
+        }
+
+        .home-top-card,
+        .home-section-card,
+        .home-side-card,
+        .home-pet-card {
+          border: 1px solid var(--home-border);
+          box-shadow: var(--home-shadow);
+        }
+
+        .home-top-card {
+          background: linear-gradient(145deg, #fffdf7 0%, #fff5df 100%);
+          border-radius: var(--home-radius-xl);
+          padding: 20px 18px 18px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .home-top-card::before {
+          content: "";
+          position: absolute;
+          top: -34px;
+          right: -24px;
+          width: 124px;
+          height: 124px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(255, 165, 0, 0.22) 0%, transparent 72%);
+          pointer-events: none;
+        }
+
+        .home-top-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: var(--home-radius-pill);
+          background: rgba(255, 255, 255, 0.82);
+          border: 1px solid rgba(255, 165, 0, 0.16);
+          color: #9c5f00;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          margin-bottom: 12px;
+        }
+
+        .home-title {
+          margin: 0;
+          font-family: 'Fraunces', serif;
+          font-size: clamp(1.85rem, 7vw, 2.5rem);
+          font-weight: 900;
+          line-height: 1.04;
+          letter-spacing: -0.03em;
+          color: var(--home-brown);
+        }
+
+        .home-subtitle {
+          margin: 8px 0 0;
+          font-size: 14px;
+          line-height: 1.55;
+          font-weight: 700;
+          color: var(--home-brown-soft);
+          max-width: 32rem;
+        }
+
+        .home-search-wrap {
+          margin-top: 16px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 14px;
+          border-radius: var(--home-radius-lg);
+          background: #ffffff;
+          border: 1.5px solid rgba(255, 165, 0, 0.16);
+          box-shadow: var(--home-shadow-soft);
+        }
+
+        .home-search-icon {
+          flex-shrink: 0;
+          font-size: 16px;
+          color: #9c5f00;
+        }
+
+        .home-search-input {
+          width: 100%;
+          border: none;
+          outline: none;
+          background: transparent;
+          padding: 15px 0;
+          font-family: 'Nunito', sans-serif;
+          font-size: 14px;
+          font-weight: 700;
+          color: #2f1c06;
+        }
+
+        .home-search-input::placeholder {
+          color: var(--home-muted);
+        }
+
+        .home-search-clear {
+          border: none;
+          background: transparent;
+          color: var(--home-muted);
+          font-size: 16px;
+          cursor: pointer;
+          padding: 4px;
+        }
+
+        .home-categories {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding: 4px 2px 2px;
+          margin-top: 14px;
+          scrollbar-width: none;
+        }
+
+        .home-categories::-webkit-scrollbar {
+          display: none;
+        }
+
+        .home-chip {
+          border: 1px solid rgba(255, 165, 0, 0.16);
+          background: #ffffff;
+          color: #7c5109;
+          border-radius: var(--home-radius-pill);
+          padding: 10px 14px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+          font-family: 'Nunito', sans-serif;
+          font-size: 13px;
+          font-weight: 800;
+          cursor: pointer;
+          box-shadow: 0 3px 10px rgba(255, 165, 0, 0.08);
+        }
+
+        .home-chip.active {
+          background: linear-gradient(135deg, #ffa500 0%, #e8750a 100%);
+          color: #ffffff;
+          border-color: transparent;
+          box-shadow: 0 8px 18px rgba(255, 140, 0, 0.25);
+        }
+
+        .home-dev-row {
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .home-dev-btn {
+          border: 1px solid rgba(255, 165, 0, 0.16);
+          background: #fff7e9;
+          color: #9c5f00;
+          border-radius: var(--home-radius-pill);
+          padding: 8px 12px;
+          font-family: 'Nunito', sans-serif;
+          font-size: 12px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .home-section-head {
+          display: flex;
+          align-items: end;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+
+        .home-section-kicker {
+          margin: 0 0 4px;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--home-amber-deep);
+        }
+
+        .home-section-title {
+          margin: 0;
+          font-family: 'Fraunces', serif;
+          font-size: 1.45rem;
+          font-weight: 900;
+          line-height: 1.08;
+          letter-spacing: -0.03em;
+          color: var(--home-brown);
+        }
+
+        .home-link-btn {
+          border: 1px solid rgba(255, 165, 0, 0.18);
+          background: #fff8ed;
+          color: #9c5f00;
+          border-radius: var(--home-radius-pill);
+          padding: 10px 14px;
+          font-family: 'Nunito', sans-serif;
+          font-size: 12px;
+          font-weight: 800;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+
+        .home-actions-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .home-action-card {
+          border: 1px solid rgba(255, 165, 0, 0.16);
+          background: linear-gradient(145deg, #fffdf8 0%, #fff3da 100%);
+          border-radius: 20px;
+          padding: 14px 12px;
+          text-align: left;
+          box-shadow: var(--home-shadow-soft);
+          cursor: pointer;
+        }
+
+        .home-action-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.82);
+          margin-bottom: 10px;
+          font-size: 21px;
+        }
+
+        .home-action-title {
+          margin: 0;
+          font-size: 13px;
+          font-weight: 900;
+          color: #3c2507;
+        }
+
+        .home-action-subtitle {
+          margin: 4px 0 0;
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--home-muted);
+        }
+
+        .home-feed {
+          display: grid;
+          gap: 14px;
+        }
+
+        .home-skeleton-grid {
+          display: grid;
+          gap: 14px;
+        }
+
+        .home-skeleton-card {
+          height: 308px;
+          border-radius: var(--home-radius-xl);
+          background: linear-gradient(90deg, #fff5de 0%, #fffcf4 45%, #fff5de 100%);
+          background-size: 400px 100%;
+          animation: shimmer 1.35s linear infinite;
+        }
+
+        .home-pet-card {
+          background: #ffffff;
+          border-radius: var(--home-radius-xl);
+          overflow: hidden;
+        }
+
+        .home-pet-image-wrap {
+          position: relative;
+          aspect-ratio: 4 / 3;
+          overflow: hidden;
+          background: #fff7e7;
+        }
+
+        .home-pet-image {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .home-status-badge {
+          position: absolute;
+          top: 12px;
+          left: 12px;
+          border-radius: var(--home-radius-pill);
+          background: rgba(255, 255, 255, 0.94);
+          color: #2f7d43;
+          border: 1px solid rgba(0, 0, 0, 0.06);
+          padding: 6px 10px;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .home-save-btn {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          width: 38px;
+          height: 38px;
+          border: none;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.96);
+          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.10);
+          cursor: pointer;
+          font-size: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .home-pet-body {
+          padding: 14px;
+          display: grid;
+          gap: 10px;
+        }
+
+        .home-pet-name-row {
+          display: flex;
+          align-items: start;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .home-pet-name {
+          margin: 0;
+          font-family: 'Fraunces', serif;
+          font-size: 1.35rem;
+          font-weight: 900;
+          line-height: 1.02;
+          letter-spacing: -0.02em;
+          color: var(--home-brown);
+        }
+
+        .home-saved-pill {
+          border-radius: var(--home-radius-pill);
+          background: #fff0ef;
+          color: #be4b4b;
+          padding: 4px 8px;
+          font-size: 9px;
+          font-weight: 900;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          flex-shrink: 0;
+        }
+
+        .home-pet-meta {
+          display: grid;
+          gap: 4px;
+        }
+
+        .home-pet-type {
+          font-size: 11px;
+          font-weight: 900;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: var(--home-amber-deep);
+        }
+
+        .home-pet-location {
+          font-size: 12px;
+          font-weight: 700;
+          color: var(--home-muted);
+        }
+
+        .home-traits {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .home-trait {
+          border-radius: var(--home-radius-pill);
+          background: var(--home-amber-soft);
+          color: #8a5600;
+          border: 1px solid rgba(255, 165, 0, 0.16);
+          padding: 5px 9px;
+          font-size: 10px;
+          font-weight: 900;
+        }
+
+        .home-pet-cta {
+          border: none;
+          border-radius: var(--home-radius-pill);
+          background: linear-gradient(135deg, #ffa500 0%, #e8750a 100%);
+          color: #ffffff;
+          padding: 12px 14px;
+          font-family: 'Nunito', sans-serif;
+          font-size: 13px;
+          font-weight: 900;
+          cursor: pointer;
+          box-shadow: 0 10px 18px rgba(255, 140, 0, 0.20);
+        }
+
+        .home-message-card {
+          background: #ffffff;
+          border: 1px solid var(--home-border);
+          border-radius: var(--home-radius-lg);
+          padding: 22px 18px;
+          text-align: center;
+          color: var(--home-brown-soft);
+          font-size: 14px;
+          font-weight: 700;
+          box-shadow: var(--home-shadow-soft);
+        }
+
+        .home-message-icon {
+          font-size: 32px;
+          margin-bottom: 8px;
+        }
+
+        .home-error-card {
+          background: #fff5f5;
+          border: 1px solid #fecaca;
+          color: #c53030;
+        }
+
+        .home-bottom-grid {
+          display: grid;
+          gap: 14px;
+        }
+
+        .home-side-card {
+          background: #ffffff;
+          border-radius: var(--home-radius-xl);
+          padding: 18px 16px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .home-side-card.quiz {
+          background: linear-gradient(145deg, #fff3df 0%, #ffe1ad 100%);
+        }
+
+        .home-side-kicker {
+          margin: 0 0 6px;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--home-amber-deep);
+        }
+
+        .home-side-title {
+          margin: 0;
+          font-family: 'Fraunces', serif;
+          font-size: 1.3rem;
+          font-weight: 900;
+          line-height: 1.15;
+          color: var(--home-brown);
+        }
+
+        .home-side-text {
+          margin: 8px 0 0;
+          font-size: 13px;
+          line-height: 1.55;
+          font-weight: 700;
+          color: var(--home-brown-soft);
+        }
+
+        .home-side-btn {
+          margin-top: 14px;
+          border: none;
+          border-radius: var(--home-radius-pill);
+          background: linear-gradient(135deg, #ffa500 0%, #e8750a 100%);
+          color: #ffffff;
+          padding: 12px 16px;
+          font-family: 'Nunito', sans-serif;
+          font-size: 13px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .home-side-btn.secondary {
+          background: #fff7ea;
+          color: #8b5600;
+          border: 1px solid rgba(255, 165, 0, 0.16);
+        }
+
+        .home-mobile-nav {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 50;
+          display: flex;
+          justify-content: space-around;
+          align-items: center;
+          padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+          background: rgba(255, 255, 255, 0.96);
+          backdrop-filter: blur(18px);
+          border-top: 1px solid rgba(255, 165, 0, 0.16);
+          box-shadow: 0 -8px 24px rgba(120, 60, 0, 0.08);
+        }
+
+        .home-mobile-nav-btn {
+          border: none;
+          background: transparent;
+          border-radius: 16px;
+          padding: 6px 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          color: var(--home-muted);
+          font-family: 'Nunito', sans-serif;
+          font-size: 10px;
+          font-weight: 800;
+          cursor: pointer;
+          min-width: 58px;
+        }
+
+        .home-mobile-nav-btn.active {
+          color: var(--home-amber-deep);
+          background: #fff2d1;
+        }
+
+        .home-mobile-nav-icon {
+          font-size: 19px;
+          line-height: 1;
+        }
+
+        @keyframes shimmer {
+          0% { background-position: -400px 0; }
+          100% { background-position: 400px 0; }
+        }
+
+        @media (min-width: 640px) {
+          .home-shell {
+            padding-inline: 22px;
+          }
+
+          .home-actions-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .home-feed,
+          .home-skeleton-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (min-width: 900px) {
+          .home-shell {
+            padding-top: 26px;
+          }
+
+          .home-stack {
+            gap: 22px;
+          }
+
+          .home-top-card {
+            padding: 24px;
+          }
+
+          .home-actions-grid {
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+          }
+
+          .home-feed,
+          .home-skeleton-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .home-bottom-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .home-feed,
+          .home-skeleton-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+          }
+        }
+
+        @media (min-width: 768px) {
+          .home-mobile-nav {
+            display: none;
+          }
+
+          .home-shell {
+            padding-bottom: 40px;
+          }
+        }
+      `}</style>
+
+      <div className="home-shell">
+        <div className="home-stack">
+          <section className="home-top-card">
+            <div className="home-top-badge">
+              <span>🐾</span>
+              My FurryFriends
             </div>
+            <h1 className="home-title">{greetingText}</h1>
+            <p className="home-subtitle">
+              Browse, save, and apply for pets looking for safe homes.
+            </p>
 
-            <div style={styles.trustStatsGrid}>
-              {trustStats.map((stat) => (
-                <div key={stat.title} style={styles.trustCard}>
-                  <h3 style={styles.trustTitle}>{stat.title}</h3>
-                  <p style={styles.trustText}>{stat.description}</p>
-                </div>
+            <label className="home-search-wrap" aria-label="Search pets">
+              <span className="home-search-icon">🔍</span>
+              <input
+                type="search"
+                className="home-search-input"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search pets by name, breed, or location"
+                aria-label="Search pets by name, breed, or location"
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  className="home-search-clear"
+                  onClick={() => setSearchQuery("")}
+                  aria-label="Clear pet search"
+                >
+                  ✕
+                </button>
+              ) : null}
+            </label>
+
+            <div className="home-categories">
+              {PET_CATEGORIES.map((category) => (
+                <button
+                  key={category.label}
+                  type="button"
+                  className={`home-chip ${activeCategory === category.label ? "active" : ""}`}
+                  onClick={() => setActiveCategory(category.label)}
+                >
+                  <span>{category.emoji}</span>
+                  {category.label}
+                </button>
               ))}
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
 
-      <section style={styles.section}>
-        <div style={styles.sectionShell}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <h2 style={styles.sectionTitle}>Featured Pets</h2>
-              <p style={styles.sectionDescription}>
-                Meet a few of the pets currently available through the Django API.
-                Each profile highlights personality, availability, and location to
-                help you narrow down your best match.
-              </p>
-            </div>
-            <button
-              style={styles.secondaryButton}
-              onClick={() => navigate("/pets")}
-            >
-              View All Pets
-            </button>
-          </div>
-
-          {loading ? (
-            <p>Loading featured pets...</p>
-          ) : error ? (
-            <div style={{ ...styles.statusMessage, ...styles.errorMessage }}>
-              {error}
-            </div>
-          ) : featuredPets.length === 0 ? (
-            <div style={styles.statusMessage}>
-              No pets are available yet. Check back soon for new furry friends.
-            </div>
-          ) : (
-            <div style={styles.featuredGrid}>
-              {featuredPets.map((pet, index) => (
-                <div key={pet.id} style={styles.petCard}>
-                  <div style={styles.petImageWrap}>
-                    <img
-                      src={pet.imageUrl || "/default-pet.jpg"}
-                      alt={pet.name}
-                      style={styles.petImage}
-                    />
-                    <div style={styles.petBadgeRow}>
-                      <span style={styles.statusBadge}>{getPetStatus(pet)}</span>
-                      <button
-                        style={styles.likeButton}
-                        onClick={() => toggleLike(index)}
-                        aria-label={`Like ${pet.name}`}
-                      >
-                        <span style={{ color: liked[index] ? "#ef4444" : "#c7c7c7" }}>
-                          {"\u2665"}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                  <div style={styles.petBody}>
-                    <div style={styles.petHeadingRow}>
-                      <div>
-                        <h3 style={styles.petName}>{pet.name}</h3>
-                        <div style={styles.petType}>{toTitleCase(pet.type)}</div>
-                      </div>
-                    </div>
-                    <p style={styles.petMeta}>
-                      {pet.breed || "Breed coming soon"} {"\u2022"} {pet.age || "Age coming soon"}
-                    </p>
-                    <p style={styles.petMeta}>{getPetLocation(pet)}</p>
-                    <div style={styles.tagRow}>
-                      {(pet.personality || []).slice(0, 4).map((trait) => (
-                        <span key={`${pet.id}-${trait}`} style={styles.tag}>
-                          {trait}
-                        </span>
-                      ))}
-                    </div>
-                    <div style={styles.petActionRow}>
-                      <button
-                        style={styles.actionButton}
-                        onClick={() => handleAdoptClick(pet.id)}
-                      >
-                        Adopt Me
-                      </button>
-                      <button
-                        style={styles.plainButton}
-                        onClick={() => navigate(`/pet/${pet.id}`)}
-                      >
-                        View details
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section style={styles.section}>
-        <div style={styles.sectionShell}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <h2 style={styles.sectionTitle}>How It Works</h2>
-              <p style={styles.sectionDescription}>
-                The adoption flow is designed to be simple, transparent, and kind
-                to both adopters and rehomers.
-              </p>
-            </div>
-          </div>
-          <div style={styles.infoGrid}>
-            {howItWorksSteps.map((step, index) => (
-              <div key={step.title} style={styles.infoCard}>
-                <div style={styles.stepNumber}>0{index + 1}</div>
-                <h3 style={styles.cardTitle}>{step.title}</h3>
-                <p style={styles.cardText}>{step.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section style={styles.factSection}>
-        <div style={styles.sectionShell}>
-          <div style={styles.factCard}>
-            <div>
-              <span style={styles.factLabel}>Fun Pet Fact</span>
-              <p style={styles.factText}>{funFacts[factIndex]}</p>
-              <button style={styles.factButton} onClick={showAnotherFact}>
-                Show another fact
+          {import.meta.env.DEV ? (
+            <div className="home-dev-row">
+              <button
+                type="button"
+                className="home-dev-btn"
+                onClick={handleResetOnboarding}
+              >
+                View onboarding again
               </button>
             </div>
-            <div style={styles.factAside}>
-              <h3 style={styles.factAsideTitle}>Why this matters</h3>
-              <p style={styles.factAsideText}>
-                Small facts can make a big difference when choosing the right pet.
-                Learning how different animals behave helps adopters ask better
-                questions and prepare more thoughtfully for real life together.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
+          ) : null}
 
-      <section style={styles.section}>
-        <div style={styles.sectionShell}>
-          <div style={styles.sectionHeader}>
-            <div>
-              <h2 style={styles.sectionTitle}>Pet Care Tips for New Adopters</h2>
-              <p style={styles.sectionDescription}>
-                A smooth first week starts with simple planning, realistic
-                expectations, and a calm welcome for your new companion.
-              </p>
-            </div>
-          </div>
-          <div style={styles.infoGrid}>
-            {careTips.map((tip) => (
-              <div key={tip.title} style={styles.infoCard}>
-                <h3 style={styles.cardTitle}>{tip.title}</h3>
-                <p style={styles.cardText}>{tip.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section style={styles.quizSection}>
-        <div style={styles.sectionShell}>
-          <div style={styles.quizCard}>
-            <div style={styles.quizContent}>
+          <section>
+            <div className="home-section-head">
               <div>
-                <h2 style={styles.sectionTitle}>Take the Purr-sonality Quiz</h2>
-                <p style={styles.sectionDescription}>
-                  Not sure where to begin? The quiz helps you think about your
-                  routine, energy level, and lifestyle so you can start your search
-                  with pets whose personalities feel naturally compatible.
-                </p>
-                <div style={{ marginTop: "20px" }}>
-                  <button style={styles.primaryButton} onClick={() => navigate("/quiz")}>
-                    Start the Quiz
-                  </button>
-                </div>
-              </div>
-              <div style={styles.quizImageWrap}>
-                <img src="/bunny.jpg" alt="Quiz pets" style={styles.quizImage} />
+                <p className="home-section-kicker">Quick Actions</p>
+                <h2 className="home-section-title">Jump straight in</h2>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      <section style={styles.missionSection}>
-        <div style={styles.sectionShell}>
-          <div style={styles.missionCard}>
-            <div className="mission-copy">
-              <h2 style={styles.sectionTitle}>Our Mission</h2>
-              <p style={styles.sectionDescription}>
-                My FurryFriends connects adopters with pets who need loving homes,
-                while giving rehomers a safe, organized way to present profiles,
-                review applications, and make thoughtful decisions. Safe adoption
-                matters because it protects pets from rushed placements, helps
-                adopters prepare properly, and gives rehomers confidence that each
-                pet is moving toward a more stable future.
+            <div className="home-actions-grid">
+              {quickActions.map((action) => (
+                <button
+                  key={action.key}
+                  type="button"
+                  className="home-action-card"
+                  onClick={() => navigate(action.to)}
+                >
+                  <span className="home-action-icon">{action.icon}</span>
+                  <p className="home-action-title">{action.title}</p>
+                  <p className="home-action-subtitle">{action.subtitle}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <div className="home-section-head">
+              <div>
+                <p className="home-section-kicker">Featured Pets</p>
+                <h2 className="home-section-title">{feedTitle}</h2>
+              </div>
+              <button
+                type="button"
+                className="home-link-btn"
+                onClick={() => navigate("/pets")}
+              >
+                View all
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="home-skeleton-grid" aria-hidden="true">
+                {[0, 1, 2, 3].map((item) => (
+                  <div key={item} className="home-skeleton-card" />
+                ))}
+              </div>
+            ) : error ? (
+              <div className="home-message-card home-error-card">{error}</div>
+            ) : featuredPets.length === 0 ? (
+              <div className="home-message-card">
+                <div className="home-message-icon">🐾</div>
+                No pets match your current search or category.
+              </div>
+            ) : (
+              <div className="home-feed">
+                {featuredPets.map((pet) => {
+                  const petCategory = getPetCategory(pet);
+                  const likedState = Boolean(likedPetIds[pet.id]);
+                  const traits = pet.personality.slice(0, 3).length
+                    ? pet.personality.slice(0, 3)
+                    : ["Friendly", "Gentle"];
+
+                  return (
+                    <article key={pet.id} className="home-pet-card">
+                      <div className="home-pet-image-wrap">
+                        <img
+                          src={pet.imageUrl}
+                          alt={pet.name ? `${pet.name} the pet` : "Pet available for adoption"}
+                          className="home-pet-image"
+                        />
+                        <div className="home-status-badge">{getPetStatus(pet)}</div>
+                        <button
+                          type="button"
+                          className="home-save-btn"
+                          onClick={() => toggleLike(pet.id)}
+                          aria-label={likedState ? "Remove pet from saved" : "Save pet"}
+                        >
+                          {likedState ? "❤️" : "🤍"}
+                        </button>
+                      </div>
+
+                      <div className="home-pet-body">
+                        <div className="home-pet-name-row">
+                          <h3 className="home-pet-name">{pet.name}</h3>
+                          {likedState ? <span className="home-saved-pill">Saved</span> : null}
+                        </div>
+
+                        <div className="home-pet-meta">
+                          <div className="home-pet-type">{pet.breed || petCategory}</div>
+                          <div className="home-pet-location">📍 {getPetLocation(pet)}</div>
+                        </div>
+
+                        <div className="home-traits">
+                          {traits.map((trait) => (
+                            <span key={`${pet.id}-${trait}`} className="home-trait">
+                              {trait}
+                            </span>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="home-pet-cta"
+                          onClick={() => navigate(`/pet/${pet.id}`)}
+                        >
+                          View Details
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="home-bottom-grid">
+            <div className="home-side-card">
+              <p className="home-side-kicker">Pet Care Tip</p>
+              <h2 className="home-side-title">A small reminder for adopters</h2>
+              <p className="home-side-text">{currentTip}</p>
+              <button
+                type="button"
+                className="home-side-btn secondary"
+                onClick={handleAnotherTip}
+              >
+                Another tip
+              </button>
+            </div>
+
+            <div className="home-side-card quiz">
+              <p className="home-side-kicker">Quiz Match</p>
+              <h2 className="home-side-title">Not sure who fits your lifestyle?</h2>
+              <p className="home-side-text">
+                Take the quiz and get matched faster.
               </p>
+              <button
+                type="button"
+                className="home-side-btn"
+                onClick={() => navigate("/quiz")}
+              >
+                Start Quiz
+              </button>
             </div>
-
-            <div style={styles.missionGrid}>
-              <div style={styles.missionMiniCard}>
-                <h3 style={styles.missionMiniTitle}>For adopters</h3>
-                <p style={styles.missionMiniText}>
-                  Discover pets with clearer details, save favorites, and move
-                  through the adoption process with more confidence.
-                </p>
-              </div>
-              <div style={styles.missionMiniCard}>
-                <h3 style={styles.missionMiniTitle}>For rehomers</h3>
-                <p style={styles.missionMiniText}>
-                  Manage pet listings, respond to interest, and review applicants
-                  through one practical dashboard.
-                </p>
-              </div>
-              <div style={styles.missionMiniCard}>
-                <h3 style={styles.missionMiniTitle}>For pets</h3>
-                <p style={styles.missionMiniText}>
-                  Every feature is meant to support calmer transitions, better
-                  matches, and happier long-term homes.
-                </p>
-              </div>
-            </div>
-          </div>
+          </section>
         </div>
-      </section>
+      </div>
+
+      <nav className="home-mobile-nav" aria-label="Main navigation">
+        {[
+          { icon: "🏠", label: "Home", to: "/", active: true },
+          { icon: "🐾", label: "Browse", to: "/pets", active: false },
+          { icon: "✨", label: "Quiz", to: "/quiz", active: false },
+          { icon: "🧡", label: "Saved", to: "/pet-pouch", active: false },
+          { icon: "👤", label: user ? "Profile" : "Sign in", to: user ? "/profile" : "/login/user", active: false },
+        ].map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            className={`home-mobile-nav-btn ${item.active ? "active" : ""}`}
+            onClick={() => navigate(item.to)}
+            aria-label={item.label}
+          >
+            <span className="home-mobile-nav-icon">{item.icon}</span>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 };

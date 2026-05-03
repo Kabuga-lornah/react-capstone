@@ -1,9 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
+from datetime import timedelta
 
-from .models import AdoptionApplication, Pet, PetImage, PetWishlist
+from .models import AdoptionApplication, Notification, Pet, PetImage, PetWishlist
 
 
 User = get_user_model()
@@ -17,6 +19,7 @@ class PetApiFlowTests(APITestCase):
             email="rehomer@example.com",
             password=self.password,
             role="rehomer",
+            rehomer_verification_status=User.VERIFIED,
         )
         self.adopter = User.objects.create_user(
             username="adopter1",
@@ -39,6 +42,14 @@ class PetApiFlowTests(APITestCase):
             state="Nairobi County",
             country="Kenya",
             description="Friendly dog",
+            energy_level=Pet.HIGH,
+            care_level=Pet.BEGINNER,
+            space_needed=Pet.MEDIUM,
+            good_with_children=Pet.YES,
+            good_with_other_pets=Pet.YES,
+            grooming_needs=Pet.LOW,
+            noise_level=Pet.MEDIUM,
+            apartment_friendly=Pet.YES,
             owner=self.rehomer,
         )
         self.other_pet = Pet.objects.create(
@@ -74,6 +85,68 @@ class PetApiFlowTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertTrue(User.objects.filter(username="newuser").exists())
 
+    def test_rehomer_can_submit_verification_profile(self):
+        pending_rehomer = User.objects.create_user(
+            username="pendingrehomer",
+            email="pending@example.com",
+            password=self.password,
+            role="rehomer",
+        )
+        self.authenticate(pending_rehomer.username, self.password)
+
+        response = self.client.post(
+            reverse("rehomer-verification-submit"),
+            {
+                "phone_number": "+254700000000",
+                "profile_photo_url": "https://example.com/profile.jpg",
+                "id_front_url": "https://example.com/id-front.jpg",
+                "id_back_url": "https://example.com/id-back.jpg",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        pending_rehomer.refresh_from_db()
+        self.assertEqual(pending_rehomer.rehomer_verification_status, User.PENDING)
+        self.assertEqual(pending_rehomer.phone_number, "+254700000000")
+        self.assertTrue(pending_rehomer.rehomer_verification_submitted_at is not None)
+
+    def test_adopter_cannot_submit_rehomer_verification(self):
+        self.authenticate(self.adopter.username, self.password)
+
+        response = self.client.post(
+            reverse("rehomer-verification-submit"),
+            {
+                "phone_number": "+254700000000",
+                "id_front_url": "https://example.com/id-front.jpg",
+                "id_back_url": "https://example.com/id-back.jpg",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+
+    def test_verification_submit_requires_id_front_and_back(self):
+        pending_rehomer = User.objects.create_user(
+            username="pendingrehomer2",
+            email="pending2@example.com",
+            password=self.password,
+            role="rehomer",
+        )
+        self.authenticate(pending_rehomer.username, self.password)
+
+        response = self.client.post(
+            reverse("rehomer-verification-submit"),
+            {
+                "phone_number": "+254700000000",
+                "id_front_url": "https://example.com/id-front.jpg",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertIn("id_back_url", response.data)
+
     def test_jwt_login(self):
         response = self.client.post(
             reverse("token-obtain-pair"),
@@ -93,6 +166,30 @@ class PetApiFlowTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data["username"], self.rehomer.username)
         self.assertEqual(response.data["role"], self.rehomer.role)
+        self.assertEqual(response.data["rehomer_verification_status"], User.VERIFIED)
+        self.assertIn("is_online", response.data)
+        self.assertIn("activity_status", response.data)
+
+    def test_heartbeat_updates_last_seen_and_online_status(self):
+        self.authenticate(self.rehomer.username, self.password)
+
+        response = self.client.patch(reverse("auth-heartbeat"), {}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.rehomer.refresh_from_db()
+        self.assertIsNotNone(self.rehomer.last_seen)
+        self.assertTrue(response.data["is_online"])
+        self.assertEqual(response.data["activity_status"], "online")
+
+    def test_user_serializer_reports_recently_active(self):
+        self.rehomer.last_seen = timezone.now() - timedelta(minutes=6)
+        self.rehomer.save(update_fields=["last_seen"])
+
+        response = self.client.get(reverse("pet-detail", args=[self.pet.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertFalse(response.data["owner"]["is_online"])
+        self.assertEqual(response.data["owner"]["activity_status"], "recently_active")
 
     def test_list_pets(self):
         response = self.client.get(reverse("pet-list"))
@@ -117,6 +214,14 @@ class PetApiFlowTests(APITestCase):
             "country": "Kenya",
             "description": "Calm and playful",
             "personality_traits": ["calm", "playful"],
+            "energy_level": "medium",
+            "care_level": "beginner",
+            "space_needed": "small",
+            "good_with_children": "yes",
+            "good_with_other_pets": "yes",
+            "grooming_needs": "medium",
+            "noise_level": "low",
+            "apartment_friendly": "yes",
             "is_vaccinated": True,
             "is_dewormed": True,
             "is_neutered": True,
@@ -127,6 +232,8 @@ class PetApiFlowTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(response.data["owner"]["id"], self.rehomer.id)
+        self.assertEqual(response.data["energy_level"], "medium")
+        self.assertEqual(response.data["care_level"], "beginner")
         self.assertTrue(Pet.objects.filter(name="Luna", owner=self.rehomer).exists())
 
     def test_adopter_cannot_create_pet(self):
@@ -139,6 +246,28 @@ class PetApiFlowTests(APITestCase):
         response = self.client.post(reverse("pet-create"), payload, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+
+    def test_unverified_rehomer_cannot_create_pet(self):
+        unverified_rehomer = User.objects.create_user(
+            username="rehomer2",
+            email="rehomer2@example.com",
+            password=self.password,
+            role="rehomer",
+            rehomer_verification_status=User.INCOMPLETE,
+        )
+        self.authenticate(unverified_rehomer.username, self.password)
+
+        response = self.client.post(
+            reverse("pet-create"),
+            {"name": "Blocked", "species": "dog"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+        self.assertEqual(
+            response.data["detail"],
+            "Complete rehomer verification before listing pets.",
+        )
 
     def test_create_pet_with_image_url(self):
         self.authenticate(self.rehomer.username, self.password)
@@ -175,6 +304,8 @@ class PetApiFlowTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data["name"], self.pet.name)
+        self.assertEqual(response.data["energy_level"], self.pet.energy_level)
+        self.assertEqual(response.data["good_with_children"], self.pet.good_with_children)
 
     def test_owner_can_update_pet_image_url(self):
         self.authenticate(self.rehomer.username, self.password)
@@ -193,6 +324,42 @@ class PetApiFlowTests(APITestCase):
                 is_main=True,
             ).exists()
         )
+
+    def test_owner_can_add_additional_pet_image(self):
+        PetImage.objects.create(
+            pet=self.pet,
+            image_url="https://example.com/pets/milo-main.jpg",
+            is_main=True,
+        )
+        self.authenticate(self.rehomer.username, self.password)
+
+        response = self.client.patch(
+            reverse("pet-detail", args=[self.pet.id]),
+            {"additional_image_url": "https://example.com/pets/milo-side.jpg"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertTrue(
+            PetImage.objects.filter(
+                pet=self.pet,
+                image_url="https://example.com/pets/milo-side.jpg",
+                is_main=False,
+            ).exists()
+        )
+
+    def test_owner_cannot_update_locked_pet_fields(self):
+        self.authenticate(self.rehomer.username, self.password)
+
+        response = self.client.patch(
+            reverse("pet-detail", args=[self.pet.id]),
+            {"name": "Changed Name"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.pet.refresh_from_db()
+        self.assertEqual(self.pet.name, "Milo")
 
     def test_list_my_pets(self):
         self.authenticate(self.rehomer.username, self.password)
@@ -329,6 +496,10 @@ class PetApiFlowTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertTrue(PetWishlist.objects.filter(user=self.adopter, pet=self.pet).exists())
+        notification = Notification.objects.get(recipient=self.rehomer, pet=self.pet)
+        self.assertEqual(notification.actor, self.adopter)
+        self.assertEqual(notification.type, Notification.WISHLIST_SAVED)
+        self.assertIn("saved Milo to their Pet Pouch", notification.message)
 
     def test_authenticated_user_can_list_own_wishlist(self):
         wishlist_item = PetWishlist.objects.create(user=self.adopter, pet=self.pet)
@@ -355,6 +526,15 @@ class PetApiFlowTests(APITestCase):
             PetWishlist.objects.filter(user=self.adopter, pet=self.pet).count(),
             1,
         )
+        self.assertEqual(
+            Notification.objects.filter(
+                recipient=self.rehomer,
+                actor=self.adopter,
+                pet=self.pet,
+                type=Notification.WISHLIST_SAVED,
+            ).count(),
+            1,
+        )
 
     def test_user_cannot_delete_another_users_wishlist_item(self):
         wishlist_item = PetWishlist.objects.create(user=self.other_adopter, pet=self.pet)
@@ -364,3 +544,90 @@ class PetApiFlowTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND, response.data)
         self.assertTrue(PetWishlist.objects.filter(pk=wishlist_item.id).exists())
+
+    def test_rehomer_can_list_own_notifications(self):
+        notification = Notification.objects.create(
+            recipient=self.rehomer,
+            actor=self.adopter,
+            pet=self.pet,
+            type=Notification.WISHLIST_SAVED,
+            title="Pet saved to wishlist",
+            message="Adopter saved Milo to their Pet Pouch.",
+        )
+        Notification.objects.create(
+            recipient=self.adopter,
+            actor=self.rehomer,
+            pet=self.pet,
+            type=Notification.WISHLIST_SAVED,
+            title="Irrelevant",
+            message="Should not be returned.",
+        )
+        self.authenticate(self.rehomer.username, self.password)
+
+        response = self.client.get(reverse("notification-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], notification.id)
+
+    def test_rehomer_can_mark_notification_read(self):
+        notification = Notification.objects.create(
+            recipient=self.rehomer,
+            actor=self.adopter,
+            pet=self.pet,
+            type=Notification.WISHLIST_SAVED,
+            title="Pet saved to wishlist",
+            message="Adopter saved Milo to their Pet Pouch.",
+        )
+        self.authenticate(self.rehomer.username, self.password)
+
+        response = self.client.patch(
+            reverse("notification-mark-read", args=[notification.id]),
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        notification.refresh_from_db()
+        self.assertTrue(notification.read)
+
+    def test_notification_unread_count_only_counts_current_users_unread_notifications(self):
+        Notification.objects.create(
+            recipient=self.rehomer,
+            actor=self.adopter,
+            pet=self.pet,
+            type=Notification.WISHLIST_SAVED,
+            title="Unread one",
+            message="Unread one",
+        )
+        Notification.objects.create(
+            recipient=self.rehomer,
+            actor=self.other_adopter,
+            pet=self.pet,
+            type=Notification.WISHLIST_SAVED,
+            title="Unread two",
+            message="Unread two",
+        )
+        Notification.objects.create(
+            recipient=self.rehomer,
+            actor=self.adopter,
+            pet=self.pet,
+            type=Notification.WISHLIST_SAVED,
+            title="Read one",
+            message="Read one",
+            read=True,
+        )
+        Notification.objects.create(
+            recipient=self.adopter,
+            actor=self.rehomer,
+            pet=self.pet,
+            type=Notification.WISHLIST_SAVED,
+            title="Other user's unread",
+            message="Other user's unread",
+        )
+        self.authenticate(self.rehomer.username, self.password)
+
+        response = self.client.get(reverse("notification-unread-count"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["count"], 2)

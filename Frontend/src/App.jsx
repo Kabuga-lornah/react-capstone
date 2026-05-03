@@ -15,6 +15,7 @@ import Blog from "./components/pages/Blog";
 import Footer from "./components/Footer";
 import ContactUs from "./components/pages/ContactUs";
 import MyListings from "./components/pages/MyListing";
+import RehomerProfile from "./components/pages/RehomerProfile";
 
 // ProtectedRoute component remains outside App
 const ProtectedRoute = ({ children, isRehomer = false }) => {
@@ -64,6 +65,12 @@ function AppWrapper() {
           <Route path="/add-pet" element={
             <ProtectedRoute isRehomer={true}>
               <AddPetForm />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/rehomer-profile" element={
+            <ProtectedRoute isRehomer={true}>
+              <RehomerProfile />
             </ProtectedRoute>
           } />
 

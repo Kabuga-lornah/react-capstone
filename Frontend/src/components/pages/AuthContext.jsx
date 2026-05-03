@@ -3,6 +3,7 @@ import {
   clearTokens,
   getAccessToken,
   getCurrentUser,
+  sendHeartbeat,
   setTokens,
 } from "../../services/api";
 
@@ -91,6 +92,25 @@ export const AuthProvider = ({ children }) => {
 
     restoreSession();
   }, []);
+
+  useEffect(() => {
+    if (!currentUser || !getAccessToken()) {
+      return undefined;
+    }
+
+    const sendPresenceHeartbeat = async () => {
+      try {
+        await sendHeartbeat();
+      } catch (error) {
+        console.error("Error sending heartbeat:", error);
+      }
+    };
+
+    sendPresenceHeartbeat();
+    const interval = setInterval(sendPresenceHeartbeat, 60000);
+
+    return () => clearInterval(interval);
+  }, [currentUser]);
 
   const value = {
     user: currentUser,

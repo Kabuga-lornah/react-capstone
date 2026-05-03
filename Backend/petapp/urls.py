@@ -7,12 +7,17 @@ from .views import (
     AdoptionApplicationCreateView,
     MyApplicationsListView,
     MyPetListView,
+    NotificationListView,
+    NotificationMarkReadView,
+    NotificationUnreadCountView,
     PetCreateView,
     PetDetailView,
     PetListView,
+    AuthHeartbeatView,
     ProfileView,
     ReceivedApplicationsListView,
     RegisterView,
+    RehomerVerificationSubmitView,
     WishlistDeleteView,
     WishlistListCreateView,
 )
@@ -21,7 +26,10 @@ urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
     path('auth/token/', TokenObtainPairView.as_view(), name='token-obtain-pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
+    path('auth/me/', ProfileView.as_view(), name='auth-me'),
     path('auth/profile/', ProfileView.as_view(), name='auth-profile'),
+    path('auth/heartbeat/', AuthHeartbeatView.as_view(), name='auth-heartbeat'),
+    path('rehomer/verification/submit/', RehomerVerificationSubmitView.as_view(), name='rehomer-verification-submit'),
 
     path('pets/', PetListView.as_view(), name='pet-list'),
     path('pets/my/', MyPetListView.as_view(), name='pet-my-list'),
@@ -36,4 +44,7 @@ urlpatterns = [
 
     path('wishlist/', WishlistListCreateView.as_view(), name='wishlist-list-create'),
     path('wishlist/<int:pk>/', WishlistDeleteView.as_view(), name='wishlist-delete'),
+    path('notifications/', NotificationListView.as_view(), name='notification-list'),
+    path('notifications/unread-count/', NotificationUnreadCountView.as_view(), name='notification-unread-count'),
+    path('notifications/<int:pk>/read/', NotificationMarkReadView.as_view(), name='notification-mark-read'),
 ]

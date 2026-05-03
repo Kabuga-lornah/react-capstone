@@ -1,11 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import {
-  getCurrentUser,
-  loginUser,
-  registerUser,
-} from "../../services/api";
-import { useAuth } from "./AuthContext";
+import { registerUser } from "../../services/api";
 
 const mapRouteTypeToRole = (type) => {
   if (type === "rehomer") {
@@ -31,17 +26,7 @@ const getRouteLabel = (type) => {
   return "User";
 };
 
-const getRedirectPath = (role) => {
-  if (role === "rehomer") {
-    return "/rehomer-dashboard";
-  }
-
-  if (role === "shelter_admin") {
-    return "/";
-  }
-
-  return "/pets";
-};
+const getLoginPath = (type) => `/login/${type === "rehomer" || type === "shelter" ? type : "user"}`;
 
 const splitName = (name) => {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -59,7 +44,6 @@ const Signup = () => {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
-  const { setAuthenticatedUser } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -80,18 +64,13 @@ const Signup = () => {
         role,
       });
 
-      const tokenResponse = await loginUser({
-        username: normalizedEmail,
-        password,
+      navigate(getLoginPath(type), {
+        replace: true,
+        state: {
+          successMessage: "Account created successfully. Please log in to continue.",
+          email: normalizedEmail,
+        },
       });
-
-      const profile = await getCurrentUser();
-      setAuthenticatedUser(profile, {
-        access: tokenResponse.access,
-        refresh: tokenResponse.refresh,
-      });
-
-      navigate(getRedirectPath(profile.role), { replace: true });
     } catch (err) {
       setError(err.message || "Signup failed. Please try again.");
     } finally {

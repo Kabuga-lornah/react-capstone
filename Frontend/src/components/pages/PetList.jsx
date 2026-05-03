@@ -9,10 +9,7 @@ import {
   listMyApplications,
   listPets,
   listWishlist,
-  updatePet,
 } from "../../services/api";
-
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const personalityTags = [
   "Friendly",
@@ -33,15 +30,16 @@ const styles = {
     flexWrap: "wrap",
   },
   petCard: {
-    backgroundColor: "#f1f1f1",
-    padding: "15px",
-    borderRadius: "8px",
-    width: "200px",
+    backgroundColor: "#f9f7f2",
+    padding: "16px",
+    borderRadius: "14px",
+    width: "240px",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
-    height: "430px",
+    minHeight: "430px",
+    boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
   },
   petImage: {
     width: "100%",
@@ -93,6 +91,18 @@ const styles = {
     fontSize: "14px",
     transition: "all 0.3s",
     marginTop: "8px",
+  },
+  detailButton: {
+    backgroundColor: "white",
+    color: "#2d3748",
+    border: "1px solid #e7c38f",
+    padding: "8px 16px",
+    borderRadius: "5px",
+    cursor: "pointer",
+    fontSize: "14px",
+    transition: "all 0.3s",
+    marginTop: "10px",
+    marginBottom: "8px",
   },
   categoryHeading: {
     fontSize: "28px",
@@ -349,81 +359,10 @@ const PetsList = () => {
     );
   };
 
-  const uploadImageToCloudinary = async (file) => {
-    const imageFormData = new FormData();
-    imageFormData.append("file", file);
-    imageFormData.append("upload_preset", "pets_presets");
-    imageFormData.append("cloud_name", "dgdf0svqx");
-
-    const response = await fetch(
-      "https://api.cloudinary.com/v1_1/dgdf0svqx/image/upload",
-      {
-        method: "POST",
-        body: imageFormData,
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error("Image upload failed. Please try again.");
-    }
-
-    const data = await response.json();
-    return data.secure_url;
-  };
-
   const handleTagToggle = (tag) => {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((currentTag) => currentTag !== tag) : [...prev, tag],
     );
-  };
-
-  const handleUpdateImage = (event, petId) => {
-    const file = event.target.files[0];
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.match("image.*")) {
-      setActionMessage({
-        type: "error",
-        text: "Please select an image file (JPEG, PNG).",
-      });
-      return;
-    }
-
-    if (file.size > MAX_IMAGE_SIZE) {
-      setActionMessage({
-        type: "error",
-        text: "Image must be smaller than 5MB.",
-      });
-      return;
-    }
-
-    const uploadImage = async () => {
-      try {
-        setActionMessage({ type: "", text: "" });
-        const uploadedImageUrl = await uploadImageToCloudinary(file);
-        await updatePet(petId, { image_url: uploadedImageUrl });
-
-        setPets((prevPets) =>
-          prevPets.map((pet) =>
-            pet.id === petId ? { ...pet, imageUrl: uploadedImageUrl } : pet,
-          ),
-        );
-        setActionMessage({
-          type: "success",
-          text: "Pet image updated successfully.",
-        });
-      } catch (updateError) {
-        console.error("Error saving image:", updateError);
-        setActionMessage({
-          type: "error",
-          text: updateError.message || "Failed to update pet image.",
-        });
-      }
-    };
-
-    uploadImage();
   };
 
   const filteredGroupedPets = pets
@@ -502,7 +441,7 @@ const PetsList = () => {
                   onChange={() => handleTagToggle(tag)}
                   style={{
                     marginRight: "10px",
-                    accentColor: "#4299e1",
+                    accentColor: "#FFA500",
                     width: "16px",
                     height: "16px",
                     cursor: "pointer",
@@ -582,32 +521,34 @@ const PetsList = () => {
                       {(pet.personality || []).join(", ")}
                     </p>
 
-                    {user?.role === "rehomer" && (
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => handleUpdateImage(event, pet.id)}
-                        style={{ marginTop: "10px" }}
-                      />
-                    )}
+                    <button
+                      style={styles.detailButton}
+                      onClick={() => navigate(`/pet/${pet.id}`)}
+                    >
+                      View Details
+                    </button>
 
-                    <button
-                      style={
-                        adoptedPets.includes(pet.id)
-                          ? styles.adoptedButton
-                          : styles.petButton
-                      }
-                      onClick={() => addToPetPouch(pet)}
-                      disabled={adoptedPets.includes(pet.id)}
-                    >
-                      {adoptedPets.includes(pet.id) ? "Requested" : "Adopt me"}
-                    </button>
-                    <button
-                      style={styles.secondaryButton}
-                      onClick={() => savePetToWishlist(pet)}
-                    >
-                      {savedPets.includes(pet.id) ? "Saved to Pet Pouch" : "Save to Pet Pouch"}
-                    </button>
+                    {user?.role !== "rehomer" && user?.role !== "shelter_admin" && (
+                      <>
+                        <button
+                          style={
+                            adoptedPets.includes(pet.id)
+                              ? styles.adoptedButton
+                              : styles.petButton
+                          }
+                          onClick={() => addToPetPouch(pet)}
+                          disabled={adoptedPets.includes(pet.id)}
+                        >
+                          {adoptedPets.includes(pet.id) ? "Requested" : "Adopt me"}
+                        </button>
+                        <button
+                          style={styles.secondaryButton}
+                          onClick={() => savePetToWishlist(pet)}
+                        >
+                          {savedPets.includes(pet.id) ? "Saved to Pet Pouch" : "Save to Pet Pouch"}
+                        </button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>

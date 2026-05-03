@@ -1,21 +1,80 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import AdoptionApplication, CustomUser, Pet, PetImage, PetWishlist, Shelter
+from .models import AdoptionApplication, CustomUser, Notification, Pet, PetImage, PetWishlist, Shelter
 
 
 @admin.register(CustomUser)
 class CustomUserAdmin(UserAdmin):
     model = CustomUser
-    list_display = ('username', 'email', 'role', 'is_staff', 'is_active')
-    list_filter = ('role', 'is_staff', 'is_active')
+    list_display = (
+        'username',
+        'email',
+        'role',
+        'rehomer_verification_status',
+        'email_verified',
+        'phone_verified',
+        'is_staff',
+        'is_active',
+    )
+    list_filter = (
+        'role',
+        'rehomer_verification_status',
+        'email_verified',
+        'phone_verified',
+        'is_staff',
+        'is_active',
+    )
     fieldsets = UserAdmin.fieldsets + (
-        ('Additional Info', {'fields': ('role', 'phone_number', 'bio', 'organization')}),
+        (
+            'Additional Info',
+            {
+                'fields': (
+                    'role',
+                    'phone_number',
+                    'bio',
+                    'organization',
+                    'profile_photo_url',
+                    'id_front_url',
+                    'id_back_url',
+                )
+            },
+        ),
+        (
+            'Verification',
+            {
+                'fields': (
+                    'email_verified',
+                    'phone_verified',
+                    'rehomer_verification_status',
+                    'rehomer_verification_submitted_at',
+                    'rehomer_verification_reviewed_at',
+                    'rehomer_verification_notes',
+                )
+            },
+        ),
     )
     add_fieldsets = UserAdmin.add_fieldsets + (
-        ('Additional Info', {'fields': ('role', 'phone_number', 'bio', 'organization')}),
+        (
+            'Additional Info',
+            {
+                'fields': (
+                    'role',
+                    'phone_number',
+                    'bio',
+                    'organization',
+                    'profile_photo_url',
+                    'id_front_url',
+                    'id_back_url',
+                    'email_verified',
+                    'phone_verified',
+                    'rehomer_verification_status',
+                    'rehomer_verification_notes',
+                )
+            },
+        ),
     )
-    search_fields = ('username', 'email', 'role')
+    search_fields = ('username', 'email', 'role', 'phone_number')
     ordering = ('username',)
 
 
@@ -28,8 +87,32 @@ class ShelterAdmin(admin.ModelAdmin):
 
 @admin.register(Pet)
 class PetAdmin(admin.ModelAdmin):
-    list_display = ('name', 'species', 'breed', 'status', 'owner', 'shelter', 'created_at')
-    list_filter = ('species', 'status', 'is_vaccinated', 'is_dewormed', 'is_neutered')
+    list_display = (
+        'name',
+        'species',
+        'breed',
+        'status',
+        'energy_level',
+        'care_level',
+        'owner',
+        'shelter',
+        'created_at',
+    )
+    list_filter = (
+        'species',
+        'status',
+        'energy_level',
+        'care_level',
+        'space_needed',
+        'good_with_children',
+        'good_with_other_pets',
+        'grooming_needs',
+        'noise_level',
+        'apartment_friendly',
+        'is_vaccinated',
+        'is_dewormed',
+        'is_neutered',
+    )
     search_fields = ('name', 'breed', 'description', 'location', 'city', 'state', 'country')
 
 
@@ -51,3 +134,18 @@ class AdoptionApplicationAdmin(admin.ModelAdmin):
 class PetWishlistAdmin(admin.ModelAdmin):
     list_display = ('user', 'pet', 'added_at')
     search_fields = ('user__username', 'user__email', 'pet__name')
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('recipient', 'actor', 'pet', 'type', 'read', 'created_at')
+    list_filter = ('type', 'read', 'created_at')
+    search_fields = (
+        'recipient__username',
+        'recipient__email',
+        'actor__username',
+        'actor__email',
+        'pet__name',
+        'title',
+        'message',
+    )

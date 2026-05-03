@@ -202,7 +202,28 @@ export async function loginUser(data) {
 }
 
 export async function getCurrentUser() {
-  return apiRequest("/auth/profile/");
+  return apiRequest("/auth/me/");
+}
+
+export async function updateCurrentUser(data) {
+  return apiRequest("/auth/me/", {
+    method: "PATCH",
+    data,
+  });
+}
+
+export async function submitRehomerVerification(data) {
+  return apiRequest("/rehomer/verification/submit/", {
+    method: "POST",
+    data,
+  });
+}
+
+export async function sendHeartbeat() {
+  return apiRequest("/auth/heartbeat/", {
+    method: "PATCH",
+    data: {},
+  });
 }
 
 export async function listPets(params = {}) {
@@ -281,6 +302,21 @@ export async function removeFromWishlist(id) {
   });
 }
 
+export async function listNotifications() {
+  return apiRequest("/notifications/");
+}
+
+export async function markNotificationRead(id) {
+  return apiRequest(`/notifications/${id}/read/`, {
+    method: "PATCH",
+    data: {},
+  });
+}
+
+export async function getUnreadNotificationCount() {
+  return apiRequest("/notifications/unread-count/");
+}
+
 export default {
   API_BASE_URL,
   ApiError,
@@ -292,6 +328,9 @@ export default {
   registerUser,
   loginUser,
   getCurrentUser,
+  updateCurrentUser,
+  submitRehomerVerification,
+  sendHeartbeat,
   listPets,
   listMyPets,
   getPetDetail,
@@ -306,4 +345,7 @@ export default {
   listWishlist,
   addToWishlist,
   removeFromWishlist,
+  listNotifications,
+  markNotificationRead,
+  getUnreadNotificationCount,
 };

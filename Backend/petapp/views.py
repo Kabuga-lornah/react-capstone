@@ -3,14 +3,18 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.utils import timezone
 
-from .models import AdoptionApplication, Pet, PetWishlist
+from .models import AdoptionApplication, CustomUser, Notification, Pet, PetWishlist
 from .serializers import (
     AdoptionApplicationSerializer,
+    NotificationSerializer,
     PetSerializer,
     PetWishlistSerializer,
+    RehomerVerificationSubmitSerializer,
     RegisterSerializer,
     UserSerializer,
+    UserProfileUpdateSerializer,
 )
 
 ALLOWED_PET_MANAGER_ROLES = {'rehomer', 'shelter_admin'}
@@ -22,11 +26,64 @@ class RegisterView(generics.CreateAPIView):
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
-    serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method in ['PATCH', 'PUT']:
+            return UserProfileUpdateSerializer
+        return UserSerializer
 
     def get_object(self):
         return self.request.user
+
+    def partial_update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', True)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(UserSerializer(instance, context={'request': request}).data)
+
+
+class RehomerVerificationSubmitView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ALLOWED_PET_MANAGER_ROLES:
+            raise PermissionDenied('Only rehomers or shelter admins can submit rehomer verification.')
+
+        serializer = RehomerVerificationSubmitSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {
+                'detail': 'Verification submitted. You can list pets once approved.',
+                'status': request.user.rehomer_verification_status,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AuthHeartbeatView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request):
+        request.user.last_seen = timezone.now()
+        request.user.save(update_fields=['last_seen'])
+        return Response(
+            {
+                'last_seen': request.user.last_seen,
+                'is_online': request.user.is_online,
+                'activity_status': request.user.activity_status,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class PetListView(generics.ListAPIView):
@@ -58,6 +115,12 @@ class PetListView(generics.ListAPIView):
 class PetDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Pet.objects.all()
     serializer_class = PetSerializer
+    allowed_update_fields = {
+        'location',
+        'description',
+        'image_url',
+        'additional_image_url',
+    }
 
     def get_permissions(self):
         if self.request.method == 'GET':
@@ -71,6 +134,14 @@ class PetDetailView(generics.RetrieveUpdateDestroyAPIView):
             raise PermissionDenied('You do not have permission to modify this pet.')
 
         return pet
+
+    def partial_update(self, request, *args, **kwargs):
+        invalid_fields = set(request.data.keys()) - self.allowed_update_fields
+        if invalid_fields:
+            raise ValidationError(
+                f"You can only update listing notes or images. Unsupported fields: {', '.join(sorted(invalid_fields))}."
+            )
+        return super().partial_update(request, *args, **kwargs)
 
 
 class MyPetListView(generics.ListAPIView):
@@ -88,6 +159,8 @@ class PetCreateView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         if request.user.role not in ALLOWED_PET_MANAGER_ROLES:
             raise PermissionDenied('Only rehomers or shelter admins can create pets.')
+        if request.user.rehomer_verification_status != CustomUser.VERIFIED:
+            raise PermissionDenied('Complete rehomer verification before listing pets.')
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
@@ -190,10 +263,23 @@ class WishlistListCreateView(APIView):
     def post(self, request):
         serializer = PetWishlistSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
+        pet = serializer.validated_data['pet']
         wishlist_item, created = PetWishlist.objects.get_or_create(
             user=request.user,
-            pet=serializer.validated_data['pet'],
+            pet=pet,
         )
+
+        if created and pet.owner and pet.owner != request.user:
+            actor_name = request.user.get_full_name().strip() or request.user.username or request.user.email
+            Notification.objects.create(
+                recipient=pet.owner,
+                actor=request.user,
+                pet=pet,
+                type=Notification.WISHLIST_SAVED,
+                title='Pet saved to wishlist',
+                message=f"{actor_name} saved {pet.name} to their Pet Pouch.",
+            )
+
         response_serializer = PetWishlistSerializer(
             wishlist_item,
             context={'request': request},
@@ -212,3 +298,42 @@ class WishlistDeleteView(generics.DestroyAPIView):
 
     def get_queryset(self):
         return PetWishlist.objects.filter(user=self.request.user)
+
+
+class NotificationListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(recipient=self.request.user).select_related(
+            'recipient',
+            'actor',
+            'pet',
+            'pet__owner',
+            'pet__shelter',
+        ).prefetch_related('pet__images')
+
+
+class NotificationMarkReadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, pk):
+        notification = generics.get_object_or_404(
+            Notification,
+            pk=pk,
+            recipient=request.user,
+        )
+        if not notification.read:
+            notification.read = True
+            notification.save(update_fields=['read'])
+
+        serializer = NotificationSerializer(notification, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class NotificationUnreadCountView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        unread_count = Notification.objects.filter(recipient=request.user, read=False).count()
+        return Response({'count': unread_count}, status=status.HTTP_200_OK)
