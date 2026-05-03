@@ -16,7 +16,6 @@ const getNavLinksByRole = (role, petPouchCount, isVerifiedRehomer) => {
       { label: "Requests", to: "/rehomer-dashboard?tab=requests" },
       { label: "Adoption Tips", to: "/rehomer-dashboard?tab=tips" },
       { label: "Public Listings", to: "/pets" },
-      { label: "Contact Us", to: "/contact" },
     ];
 
     if (isVerifiedRehomer) {
@@ -28,54 +27,119 @@ const getNavLinksByRole = (role, petPouchCount, isVerifiedRehomer) => {
 
   if (role === "adopter" || role === "user") {
     return [
-      { label: "Home", to: "/" },
-      { label: "Browse Pets", to: "/pets" },
       { label: "Quiz", to: "/quiz" },
       { label: `Pet Pouch${typeof petPouchCount === "number" ? ` ${petPouchCount}` : ""}`, to: "/pet-pouch" },
       { label: "My Applications", to: "/my-listing" },
-      { label: "Contact Us", to: "/contact" },
     ];
   }
 
   return [
-    { label: "Home", to: "/" },
-    { label: "Browse Pets", to: "/pets" },
     { label: "Quiz", to: "/quiz" },
-    { label: "Blog", to: "/blog" },
-    { label: "Contact Us", to: "/contact" },
+    { label: "Pet Pouch", to: "/pet-pouch" },
   ];
 };
 
 const getMobilePrimaryLinks = (role, petPouchCount, isVerifiedRehomer, notificationCount) => {
   if (role === "rehomer" || role === "shelter_admin") {
     return [
-      { label: "Home", to: "/rehomer-dashboard", icon: "🏠" },
-      { label: isVerifiedRehomer ? "Add Pet" : "My Pets", to: isVerifiedRehomer ? "/add-pet" : "/rehomer-dashboard?tab=pets", icon: isVerifiedRehomer ? "➕" : "🐶" },
-      { label: "Requests", to: "/rehomer-dashboard?tab=requests", icon: "💌", badge: notificationCount > 0 ? notificationCount : null },
-      { label: "Listings", to: "/pets", icon: "🐾" },
-      { label: "Profile", to: "/rehomer-profile", icon: "👤" },
+      { label: "Home", to: "/rehomer-dashboard", icon: "home" },
+      { label: isVerifiedRehomer ? "Add Pet" : "My Pets", to: isVerifiedRehomer ? "/add-pet" : "/rehomer-dashboard?tab=pets", icon: isVerifiedRehomer ? "plus" : "paw" },
+      { label: "Requests", to: "/rehomer-dashboard?tab=requests", icon: "mail", badge: notificationCount > 0 ? notificationCount : null },
+      { label: "Listings", to: "/pets", icon: "paw" },
+      { label: "Profile", to: "/rehomer-profile", icon: "person" },
     ];
   }
 
   if (role === "adopter" || role === "user") {
     return [
-      { label: "Home", to: "/", icon: "🏠" },
-      { label: "Pets", to: "/pets", icon: "🐾" },
-      { label: "Quiz", to: "/quiz", icon: "✨" },
-      { label: "Pouch", to: "/pet-pouch", icon: "🧡", badge: typeof petPouchCount === "number" && petPouchCount > 0 ? petPouchCount : null },
-      { label: "Apps", to: "/my-listing", icon: "📋" },
+      { label: "Home", to: "/", icon: "paw", iconOnly: true },
+      { label: "Quiz", to: "/quiz", icon: "quiz" },
+      { label: "Pouch", to: "/pet-pouch", icon: "petPouch", badge: typeof petPouchCount === "number" && petPouchCount > 0 ? petPouchCount : null },
+      { label: "Apps", to: "/my-listing", icon: "clipboard" },
     ];
   }
 
   return [
-    { label: "Home", to: "/", icon: "🏠" },
-    { label: "Pets", to: "/pets", icon: "🐾" },
-    { label: "Quiz", to: "/quiz", icon: "✨" },
-    { label: "Blog", to: "/blog", icon: "📖" },
-    { label: "Login", to: "/login/user", icon: "👤" },
+    { label: "Home", to: "/", icon: "paw", iconOnly: true },
+    { label: "Quiz", to: "/quiz", icon: "quiz" },
+    { label: "Pet Pouch", to: "/pet-pouch", icon: "petPouch" },
   ];
 };
 
+const renderNavIcon = (icon) => {
+  switch (icon) {
+    case "paw":
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <ellipse cx="7" cy="8" rx="2" ry="2.7" />
+          <ellipse cx="12" cy="6.2" rx="2" ry="2.9" />
+          <ellipse cx="17" cy="8" rx="2" ry="2.7" />
+          <ellipse cx="18.2" cy="13.2" rx="1.8" ry="2.4" />
+          <ellipse cx="5.8" cy="13.2" rx="1.8" ry="2.4" />
+          <path d="M12 11.5c-3.1 0-5.7 2.2-5.7 5 0 1.7 1.2 2.8 2.8 2.8.9 0 1.6-.3 2.1-.7.4-.3.9-.5 1.4-.5s1 .2 1.4.5c.5.4 1.3.7 2.1.7 1.6 0 2.8-1.1 2.8-2.8 0-2.8-2.6-5-5.7-5Z" />
+        </svg>
+      );
+    case "home":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 11.5 12 4l9 7.5" />
+          <path d="M5.5 10.5V20h13V10.5" />
+        </svg>
+      );
+    case "plus":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 5v14" />
+          <path d="M5 12h14" />
+        </svg>
+      );
+    case "mail":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="m4 7 8 6 8-6" />
+        </svg>
+      );
+    case "person":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M5 20a7 7 0 0 1 14 0" />
+        </svg>
+      );
+    case "quiz":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 4.5h8a2 2 0 0 1 2 2v11a1 1 0 0 1-1.6.8L11 16H6a2 2 0 0 1-2-2v-7.5a2 2 0 0 1 2-2Z" />
+          <path d="m14.5 5.5 4 4" />
+          <path d="m13.5 10.5 5-5" />
+          <path d="m12.8 11.2-.8 2.8 2.8-.8" />
+        </svg>
+      );
+    case "petPouch":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6 9.5h12l-1.1 8a2 2 0 0 1-2 1.7H9.1a2 2 0 0 1-2-1.7Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M9 9.5a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <ellipse cx="9.2" cy="11.6" rx="0.8" ry="1.1" fill="currentColor" />
+          <ellipse cx="12" cy="10.6" rx="0.9" ry="1.2" fill="currentColor" />
+          <ellipse cx="14.8" cy="11.6" rx="0.8" ry="1.1" fill="currentColor" />
+          <path d="M12 11.7c-1.4 0-2.6 1-2.6 2.2 0 .8.6 1.3 1.3 1.3.4 0 .7-.1 1-.3.2-.1.4-.2.6-.2s.5.1.6.2c.3.2.6.3 1 .3.7 0 1.3-.5 1.3-1.3 0-1.2-1.2-2.2-2.6-2.2Z" fill="currentColor" />
+        </svg>
+      );
+    case "clipboard":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="6" y="4" width="12" height="16" rx="2" />
+          <path d="M9 4.5h6" />
+          <path d="M9 10h6" />
+          <path d="M9 14h6" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
 const isLinkActive = (location, to) => {
   if (to.includes("?")) {
     return `${location.pathname}${location.search}` === to;
@@ -122,10 +186,12 @@ const Navbar = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileHeaderVisible, setMobileHeaderVisible] = useState(true);
   const [notifications, setNotifications] = useState([]);
   const [notificationCount, setNotificationCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const dropdownRef = useRef(null);
+  const lastScrollYRef = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -226,6 +292,47 @@ const Navbar = () => {
     }
   }, [showNotifications]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleScroll = () => {
+      if (window.innerWidth > 768) {
+        setMobileHeaderVisible(true);
+        lastScrollYRef.current = window.scrollY;
+        return;
+      }
+
+      const currentScrollY = window.scrollY;
+
+      if (currentScrollY <= 12) {
+        setMobileHeaderVisible(true);
+      } else if (currentScrollY > lastScrollYRef.current + 6) {
+        setMobileHeaderVisible(false);
+      } else if (currentScrollY < lastScrollYRef.current - 6) {
+        setMobileHeaderVisible(true);
+      }
+
+      lastScrollYRef.current = currentScrollY;
+    };
+
+    const handleResize = () => {
+      if (window.innerWidth > 768) {
+        setMobileHeaderVisible(true);
+      }
+    };
+
+    lastScrollYRef.current = window.scrollY;
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
   const handleMenuNavigate = (to) => {
     closeMenus();
     navigate(to);
@@ -266,7 +373,7 @@ const Navbar = () => {
 
   return (
     <nav className="mff-navbar">
-      <div className="mff-navbar__container">
+      <div className={`mff-navbar__container${mobileHeaderVisible ? "" : " mff-navbar__container--mobile-hidden"}`}>
         <Link to="/" className="mff-navbar__logo" onClick={closeMenus}>
           My FurryFriends
         </Link>
@@ -314,7 +421,9 @@ const Navbar = () => {
                     }}
                     aria-label="Open notifications"
                   >
-                    <span className="mff-navbar__notification-icon">🔔</span>
+                    <span className="mff-navbar__notification-icon">
+                      {renderNavIcon("mail")}
+                    </span>
                     {notificationCount > 0 && (
                       <span className="mff-navbar__notification-count">
                         {notificationCount > 99 ? "99+" : notificationCount}
@@ -480,18 +589,10 @@ const Navbar = () => {
                 <NavLink
                   to="/login/user"
                   onClick={closeMenus}
-                  className={`mff-navbar__link ${isLinkActive(location, "/login/user") ? "mff-navbar__link--active" : ""}`}
+                  className={`mff-navbar__guest-account ${isLinkActive(location, "/login/user") || isLinkActive(location, "/signup/user") ? "mff-navbar__guest-account--active" : ""}`}
+                  aria-label="Open account options"
                 >
-                  Login
-                </NavLink>
-                <NavLink
-                  to="/signup/rehomer"
-                  onClick={closeMenus}
-                  className={`mff-navbar__link mff-navbar__link--cta ${
-                    isLinkActive(location, "/signup/rehomer") ? "mff-navbar__link--active" : ""
-                  }`}
-                >
-                  Become a Rehomer
+                  {renderNavIcon("person")}
                 </NavLink>
               </div>
             )}
@@ -499,7 +600,11 @@ const Navbar = () => {
         </div>
       </div>
 
-      <div className="mff-bottom-nav" aria-label="Primary mobile navigation">
+      <div
+        className="mff-bottom-nav"
+        aria-label="Primary mobile navigation"
+        style={{ gridTemplateColumns: `repeat(${mobilePrimaryLinks.length}, minmax(0, 1fr))` }}
+      >
         {mobilePrimaryLinks.map((link) => (
           <NavLink
             key={link.to}
@@ -508,11 +613,14 @@ const Navbar = () => {
             className={`mff-bottom-nav__item ${
               isLinkActive(location, link.to) ? "mff-bottom-nav__item--active" : ""
             }`}
+            aria-label={link.label}
           >
             <span className="mff-bottom-nav__icon" aria-hidden="true">
-              {link.icon}
+              {renderNavIcon(link.icon)}
             </span>
-            <span className="mff-bottom-nav__label">{link.label}</span>
+            {!link.iconOnly ? (
+              <span className="mff-bottom-nav__label">{link.label}</span>
+            ) : null}
             {link.badge ? (
               <span className="mff-bottom-nav__badge">
                 {link.badge > 99 ? "99+" : link.badge}
@@ -630,6 +738,28 @@ const styles = `
     background: linear-gradient(135deg, #fffbed 0%, #ffedbc 55%, #ffd97a 100%);
   }
 
+  .mff-navbar__guest-account {
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #fff8e1 0%, #ffe29a 100%);
+    color: #9c5f00;
+    box-shadow: 0 10px 22px rgba(214, 132, 14, 0.16);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
+  }
+
+  .mff-navbar__guest-account:hover {
+    transform: translateY(-1px);
+    background: linear-gradient(135deg, #fffbed 0%, #ffedbc 100%);
+  }
+
+  .mff-navbar__guest-account--active {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffd97a 100%);
+  }
+
   .mff-navbar__auth {
     position: relative;
     display: flex;
@@ -681,8 +811,18 @@ const styles = `
   }
 
   .mff-navbar__notification-icon {
-    font-size: 1rem;
-    line-height: 1;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mff-navbar__notification-icon svg,
+  .mff-navbar__guest-account svg,
+  .mff-bottom-nav__icon svg {
+    width: 100%;
+    height: 100%;
   }
 
   .mff-navbar__notification-count {
@@ -961,42 +1101,81 @@ const styles = `
     }
 
     .mff-navbar {
-      background: linear-gradient(180deg, #ffb51f 0%, #ffc94d 100%);
-      position: sticky;
-      top: 0;
+      background: transparent;
+      box-shadow: none;
     }
 
     .mff-navbar__container {
-      padding: 14px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 180;
+      padding: 12px 16px;
       flex-wrap: nowrap;
+      background: rgba(255, 251, 245, 0.96);
+      border-bottom: 1px solid rgba(255, 186, 63, 0.26);
+      box-shadow: none;
+      backdrop-filter: blur(14px);
+      transition: transform 0.24s ease, opacity 0.24s ease;
+    }
+
+    .mff-navbar__container--mobile-hidden {
+      transform: translateY(calc(-100% - 8px));
+      opacity: 0;
+      pointer-events: none;
     }
 
     .mff-navbar__logo {
       font-size: 1.15rem;
-      max-width: 60vw;
+      max-width: 62vw;
       overflow: hidden;
       text-overflow: ellipsis;
+      color: #b86a00;
     }
 
-    .mff-navbar__toggle,
-    .mff-navbar__content {
+    .mff-navbar__toggle {
       display: none !important;
+    }
+
+    .mff-navbar__content {
+      display: flex !important;
+      flex: 1;
+      justify-content: flex-end;
+      gap: 0;
+    }
+
+    .mff-navbar__links {
+      display: none !important;
+    }
+
+    .mff-navbar__auth {
+      margin-left: auto;
+      justify-content: flex-end;
+    }
+
+    .mff-navbar__guest-actions {
+      width: auto;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: nowrap;
+    }
+
+    .mff-navbar__user {
+      width: auto;
     }
 
     .mff-bottom-nav {
       position: fixed;
-      left: 12px;
-      right: 12px;
-      bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      left: 0;
+      right: 0;
+      bottom: 0;
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 8px;
-      padding: 10px 10px 12px;
-      border-radius: 24px;
-      background: rgba(255, 252, 244, 0.96);
-      border: 1px solid rgba(255, 186, 63, 0.22);
-      box-shadow: 0 18px 40px rgba(156, 95, 0, 0.18);
-      backdrop-filter: blur(16px);
+      gap: 0;
+      padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+      border-radius: 0;
+      background: rgba(255, 252, 244, 0.98);
+      border-top: 1px solid rgba(255, 186, 63, 0.22);
+      box-shadow: 0 -8px 24px rgba(156, 95, 0, 0.12);
       z-index: 140;
     }
 
@@ -1010,13 +1189,13 @@ const styles = `
       justify-content: center;
       gap: 4px;
       min-height: 56px;
-      border-radius: 18px;
-      transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease;
+      border-radius: 16px;
+      transition: background 0.2s ease, color 0.2s ease;
     }
 
     .mff-bottom-nav__item:hover {
-      background: rgba(255, 236, 192, 0.72);
-      transform: translateY(-1px);
+      background: transparent;
+      transform: none;
     }
 
     .mff-bottom-nav__item--active {
@@ -1026,7 +1205,8 @@ const styles = `
     }
 
     .mff-bottom-nav__icon {
-      font-size: 1.05rem;
+      width: 22px;
+      height: 22px;
       line-height: 1;
     }
 

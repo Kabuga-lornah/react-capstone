@@ -42,7 +42,8 @@ function AppWrapper() {
         <Navbar />
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<PetsList />} />
+          <Route path="/welcome" element={<Home />} />
           <Route path="/login" element={<Navigate to="/login/user" replace />} />
           <Route path="/login/:type" element={<Login />} />
           <Route path="/signup" element={<Navigate to="/signup/user" replace />} />

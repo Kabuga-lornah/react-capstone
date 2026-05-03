@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useContext } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   addToWishlist,
   createAdoptionApplication,
@@ -110,6 +110,505 @@ const getPresenceLabel = (owner) => {
   return "";
 };
 
+const pageStyles = `
+  .pd-shell {
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top right, rgba(255, 212, 138, 0.28), transparent 30%),
+      linear-gradient(180deg, #fffaf4 0%, #fffdf9 100%);
+  }
+
+  .pd-loading,
+  .pd-state {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 28px 18px calc(110px + env(safe-area-inset-bottom, 0px));
+    color: #5f4b34;
+  }
+
+  .pd-state-card {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(245, 158, 11, 0.12);
+    border-radius: 24px;
+    box-shadow: 0 18px 44px rgba(28, 18, 7, 0.08);
+    padding: 24px;
+  }
+
+  .pd-page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 18px 16px calc(110px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .pd-back-button {
+    border: none;
+    background: transparent;
+    color: #d97706;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-bottom: 18px;
+  }
+
+  .pd-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .pd-gallery-card,
+  .pd-card,
+  .pd-summary-top {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(245, 158, 11, 0.12);
+    border-radius: 26px;
+    box-shadow: 0 18px 44px rgba(28, 18, 7, 0.08);
+  }
+
+  .pd-gallery-card {
+    padding: 14px;
+  }
+
+  .pd-image-frame {
+    position: relative;
+    overflow: hidden;
+    border-radius: 22px;
+    min-height: 460px;
+    background: #f6e6c9;
+  }
+
+  .pd-image {
+    width: 100%;
+    height: 100%;
+    min-height: 460px;
+    object-fit: cover;
+    display: block;
+  }
+
+  .pd-image-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(28, 18, 7, 0.02) 0%, rgba(28, 18, 7, 0.2) 100%);
+    pointer-events: none;
+  }
+
+  .pd-status-badge {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #166534;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .pd-status-badge.is-adopted {
+    color: #9a3412;
+  }
+
+  .pd-image-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #d97706;
+    font-size: 28px;
+    cursor: pointer;
+  }
+
+  .pd-image-nav.left { left: 16px; }
+  .pd-image-nav.right { right: 16px; }
+
+  .pd-image-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 4px 2px;
+  }
+
+  .pd-image-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    border: none;
+    background: rgba(245, 158, 11, 0.2);
+    cursor: pointer;
+  }
+
+  .pd-image-dot.is-active {
+    background: #f59e0b;
+  }
+
+  .pd-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .pd-summary-top {
+    padding: 24px;
+    display: grid;
+    gap: 18px;
+  }
+
+  .pd-type {
+    margin: 0 0 8px;
+    color: #d97706;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .pd-name {
+    margin: 0;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    line-height: 0.96;
+    color: #24170b;
+  }
+
+  .pd-listed-by,
+  .pd-presence {
+    margin: 10px 0 0;
+    color: #6b4e2a;
+    font-size: 15px;
+  }
+
+  .pd-presence {
+    color: #d97706;
+    font-weight: 700;
+  }
+
+  .pd-mini-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .pd-mini-tag {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 9px 12px;
+    background: #fff6df;
+    color: #a16207;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .pd-facts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .pd-fact-card,
+  .pd-health-pill {
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(245, 158, 11, 0.12);
+    border-radius: 20px;
+    padding: 16px;
+    box-shadow: 0 14px 32px rgba(28, 18, 7, 0.06);
+  }
+
+  .pd-fact-label,
+  .pd-health-label {
+    display: block;
+    color: #8b6a45;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .pd-fact-value,
+  .pd-health-pill strong {
+    color: #24170b;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  .pd-health-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .pd-content-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+    gap: 24px;
+    margin-top: 24px;
+    align-items: start;
+  }
+
+  .pd-main-column,
+  .pd-side-column {
+    display: grid;
+    gap: 18px;
+  }
+
+  .pd-card {
+    padding: 22px;
+  }
+
+  .pd-card--warm {
+    background: linear-gradient(180deg, #fff9ec 0%, #ffffff 100%);
+  }
+
+  .pd-card--owner {
+    background: linear-gradient(180deg, #fff8e8 0%, #ffffff 100%);
+  }
+
+  .pd-card-head {
+    margin-bottom: 14px;
+  }
+
+  .pd-card-head h2 {
+    margin: 4px 0 0;
+    font-size: 24px;
+    color: #24170b;
+  }
+
+  .pd-card-kicker {
+    color: #d97706;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .pd-body-copy {
+    margin: 0;
+    color: #5f4b34;
+    line-height: 1.75;
+    font-size: 15px;
+  }
+
+  .pd-traits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .pd-trait-chip {
+    border-radius: 999px;
+    padding: 9px 14px;
+    background: linear-gradient(135deg, #f59e0b 0%, #ffb739 100%);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .pd-care-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .pd-care-item {
+    border-radius: 18px;
+    background: #fff9ee;
+    border: 1px solid rgba(245, 158, 11, 0.12);
+    padding: 14px 15px;
+    display: grid;
+    gap: 6px;
+  }
+
+  .pd-care-item span {
+    color: #8b6a45;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .pd-care-item strong {
+    color: #24170b;
+    font-size: 15px;
+  }
+
+  .pd-form-grid {
+    display: grid;
+    gap: 14px;
+    margin-top: 18px;
+  }
+
+  .pd-field {
+    display: grid;
+    gap: 8px;
+    color: #5f4b34;
+    font-weight: 700;
+  }
+
+  .pd-input,
+  .pd-textarea {
+    width: 100%;
+    border: 1px solid rgba(232, 196, 140, 1);
+    border-radius: 14px;
+    padding: 14px 15px;
+    font-size: 15px;
+    background: #fff;
+    color: #24170b;
+    outline: none;
+    font-family: inherit;
+  }
+
+  .pd-textarea {
+    resize: vertical;
+    min-height: 140px;
+  }
+
+  .pd-owner-actions,
+  .pd-side-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .pd-primary-button,
+  .pd-secondary-button {
+    border: none;
+    border-radius: 14px;
+    padding: 13px 18px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.18s ease, opacity 0.18s ease;
+    font-family: inherit;
+  }
+
+  .pd-primary-button {
+    background: linear-gradient(135deg, #f59e0b 0%, #ffb739 100%);
+    color: #fff;
+    box-shadow: 0 16px 30px rgba(245, 158, 11, 0.22);
+  }
+
+  .pd-secondary-button {
+    background: #fff;
+    color: #c56b07;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+  }
+
+  .pd-primary-button:disabled,
+  .pd-secondary-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .pd-hidden-input {
+    display: none;
+  }
+
+  .pd-success {
+    margin: 12px 0 0;
+    color: #166534;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+
+  .pd-error {
+    margin: 0 0 12px;
+    color: #c53030;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+
+  .pd-login-card {
+    display: grid;
+    gap: 12px;
+  }
+
+  .pd-login-card p {
+    margin: 0;
+    color: #5f4b34;
+    line-height: 1.7;
+  }
+
+  .pd-checklist {
+    display: grid;
+    gap: 10px;
+  }
+
+  .pd-checklist-item {
+    border-radius: 16px;
+    background: #fff9ee;
+    border: 1px solid rgba(245, 158, 11, 0.12);
+    padding: 13px 14px;
+    color: #5f4b34;
+    line-height: 1.6;
+  }
+
+  @media (max-width: 1024px) {
+    .pd-hero,
+    .pd-content-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .pd-page {
+      padding: 14px 12px calc(110px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .pd-image-frame,
+    .pd-image {
+      min-height: 340px;
+    }
+
+    .pd-summary-top,
+    .pd-card,
+    .pd-gallery-card {
+      border-radius: 22px;
+    }
+
+    .pd-gallery-card {
+      padding: 12px;
+    }
+
+    .pd-image-frame {
+      border-radius: 18px;
+    }
+
+    .pd-name {
+      font-size: 2.25rem;
+    }
+
+    .pd-facts-grid,
+    .pd-care-grid,
+    .pd-health-strip {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .pd-side-actions,
+    .pd-owner-actions {
+      flex-direction: column;
+    }
+
+    .pd-primary-button,
+    .pd-secondary-button {
+      width: 100%;
+    }
+  }
+`;
+
 const PetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -123,6 +622,7 @@ const PetDetail = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [inquiryMessage, setInquiryMessage] = useState("");
   const [ownerForm, setOwnerForm] = useState({
     location: "",
     description: "",
@@ -130,6 +630,7 @@ const PetDetail = () => {
   const [isUpdatingOwnerNotes, setIsUpdatingOwnerNotes] = useState(false);
   const [isUploadingExtraImage, setIsUploadingExtraImage] = useState(false);
   const { updatePetPouchCount } = useContext(PetPouchContext);
+  const hasSeededInquiryRef = useRef(false);
 
   const currentUserId = user?.id ?? userData?.id ?? null;
   const isOwner =
@@ -141,6 +642,7 @@ const PetDetail = () => {
   const canShowAdopterActions = Boolean(!pet?.adopted && !isOwner && !isRehomerView);
   const canManageListing = isOwner;
   const rehomerPresence = getPresenceLabel(pet?.owner);
+  const isLoggedIn = Boolean(getAccessToken());
 
   useEffect(() => {
     if (!pet) {
@@ -152,6 +654,13 @@ const PetDetail = () => {
       description: pet.description || "",
     });
     setActiveImageIndex(0);
+
+    if (!hasSeededInquiryRef.current) {
+      setInquiryMessage(
+        `Hi ${pet.rehomerName}, I am interested in ${pet.name}. Can you tell me more about the pet's feeding routine, vaccination history, and daily care needs?`,
+      );
+      hasSeededInquiryRef.current = true;
+    }
   }, [pet]);
 
   useEffect(() => {
@@ -182,9 +691,7 @@ const PetDetail = () => {
       try {
         const response = await listWishlist();
         const wishlistItems = Array.isArray(response) ? response : response?.results || [];
-        setIsSaved(
-          wishlistItems.some((item) => String(item.pet?.id) === String(id)),
-        );
+        setIsSaved(wishlistItems.some((item) => String(item.pet?.id) === String(id)));
       } catch (wishlistError) {
         console.error("Error fetching wishlist status:", wishlistError);
       }
@@ -237,6 +744,30 @@ const PetDetail = () => {
       updatePetPouchCount();
     } catch (err) {
       setActionError(err.message || "Failed to submit adoption application.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleInquirySubmit = async () => {
+    if (!getAccessToken()) {
+      setActionError("Please log in to message the rehomer about this pet.");
+      navigate("/login/user");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setActionError("");
+      await createAdoptionApplication({
+        pet_id: Number(id),
+        message: inquiryMessage.trim() || `Hi ${pet.rehomerName}, I would like to know more about ${pet.name}.`,
+      });
+
+      setIsInterested(true);
+      updatePetPouchCount();
+    } catch (err) {
+      setActionError(err.message || "Failed to send your message to the rehomer.");
     } finally {
       setIsSubmitting(false);
     }
@@ -358,495 +889,339 @@ const PetDetail = () => {
     );
   };
 
-  if (loading) return <p>Loading...</p>;
-  if (loadError) return <p>{loadError}</p>;
-  if (!pet) return <p>Pet not found</p>;
+  if (loading) {
+    return (
+      <div className="pd-shell">
+        <style>{pageStyles}</style>
+        <div className="pd-loading">
+          <div className="pd-state-card">Loading pet details...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="pd-shell">
+        <style>{pageStyles}</style>
+        <div className="pd-state">
+          <div className="pd-state-card">{loadError}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!pet) {
+    return (
+      <div className="pd-shell">
+        <style>{pageStyles}</style>
+        <div className="pd-state">
+          <div className="pd-state-card">Pet not found.</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={styles.container}>
-      <button 
-        onClick={() => navigate(-1)} 
-        style={styles.backButton}
-      >
-        &larr; Back to Pets
-      </button>
-      
-      <div style={styles.petContainer}>
-        <div style={styles.imageContainer}>
-          <img 
-            src={pet.imageUrls?.[activeImageIndex] || pet.imageUrl || "/default-pet.jpg"} 
-            alt={pet.name}
-            style={styles.petImage}
-          />
-          {pet.imageUrls?.length > 1 && (
-            <>
-              <button type="button" onClick={showPreviousImage} style={styles.imageNavButtonLeft}>
-                ‹
-              </button>
-              <button type="button" onClick={showNextImage} style={styles.imageNavButtonRight}>
-                ›
-              </button>
-              <div style={styles.imageDots}>
+    <div className="pd-shell">
+      <style>{pageStyles}</style>
+      <div className="pd-page">
+        <button type="button" onClick={() => navigate(-1)} className="pd-back-button">
+          <span aria-hidden="true">←</span>
+          Back to Pets
+        </button>
+
+        <section className="pd-hero">
+          <div className="pd-gallery-card">
+            <div className="pd-image-frame">
+              <img
+                src={pet.imageUrls?.[activeImageIndex] || pet.imageUrl || "/default-pet.jpg"}
+                alt={pet.name}
+                className="pd-image"
+              />
+              <div className="pd-image-overlay" aria-hidden="true" />
+              <span className={`pd-status-badge ${pet.adopted ? "is-adopted" : ""}`}>
+                {pet.adopted ? "Adopted" : "Available"}
+              </span>
+              {pet.imageUrls?.length > 1 ? (
+                <>
+                  <button type="button" onClick={showPreviousImage} className="pd-image-nav left" aria-label="Show previous pet photo">
+                    ‹
+                  </button>
+                  <button type="button" onClick={showNextImage} className="pd-image-nav right" aria-label="Show next pet photo">
+                    ›
+                  </button>
+                </>
+              ) : null}
+            </div>
+            {pet.imageUrls?.length > 1 ? (
+              <div className="pd-image-dots">
                 {pet.imageUrls.map((imageUrl, index) => (
                   <button
                     key={`${imageUrl}-${index}`}
                     type="button"
                     onClick={() => setActiveImageIndex(index)}
-                    style={{
-                      ...styles.imageDot,
-                      ...(index === activeImageIndex ? styles.imageDotActive : {}),
-                    }}
+                    className={`pd-image-dot${index === activeImageIndex ? " is-active" : ""}`}
+                    aria-label={`Show photo ${index + 1}`}
                   />
                 ))}
               </div>
-            </>
-          )}
-        </div>
-        
-        <div style={styles.detailsContainer}>
-          <h1 style={styles.petName}>{pet.name}</h1>
-          <p style={styles.rehomer}>Listed by: {pet.rehomerName}</p>
-          {rehomerPresence ? (
-            <p style={styles.rehomerStatus}>{rehomerPresence}</p>
-          ) : null}
-          
-          <div style={styles.detailsGrid}>
-            <div style={styles.detailItem}>
-              <h3>Breed</h3>
-              <p>{pet.breed}</p>
-            </div>
-            <div style={styles.detailItem}>
-              <h3>Age</h3>
-              <p>{pet.age}</p>
-            </div>
-            <div style={styles.detailItem}>
-              <h3>Gender</h3>
-              <p>{pet.gender}</p>
-            </div>
-            <div style={styles.detailItem}>
-              <h3>Status</h3>
-              <p>{pet.adopted ? "Adopted" : "Available"}</p>
-            </div>
-          </div>
-          
-          <div style={styles.section}>
-            <h2>About {pet.name}</h2>
-            <p>{pet.description}</p>
-          </div>
-          
-          <div style={styles.section}>
-            <h2>Personality</h2>
-            <div style={styles.traitsContainer}>
-              {pet.personality.map((trait, index) => (
-                <span key={index} style={styles.trait}>
-                  {trait}
-                </span>
-              ))}
-            </div>
+            ) : null}
           </div>
 
-          <div style={styles.section}>
-            <h2>Care & Compatibility</h2>
-            <div style={styles.compatibilityGrid}>
-              <div style={styles.compatibilityItem}>
-                <strong>Energy Level:</strong> {formatCompatibilityValue(pet.energy_level)}
+          <div className="pd-summary">
+            <div className="pd-summary-top">
+              <div>
+                <p className="pd-type">{toTitleCase(pet.type)}</p>
+                <h1 className="pd-name">{pet.name}</h1>
+                <p className="pd-listed-by">Listed by {pet.rehomerName}</p>
+                {rehomerPresence ? (
+                  <p className="pd-presence">{rehomerPresence}</p>
+                ) : null}
               </div>
-              <div style={styles.compatibilityItem}>
-                <strong>Care Level:</strong> {formatCompatibilityValue(pet.care_level)}
+              <div className="pd-mini-tags">
+                {pet.location ? <span className="pd-mini-tag">{pet.location}</span> : null}
+                <span className="pd-mini-tag">{pet.breed || "Breed not shared yet"}</span>
               </div>
-              <div style={styles.compatibilityItem}>
-                <strong>Space Needed:</strong> {formatCompatibilityValue(pet.space_needed)}
+            </div>
+
+            <div className="pd-facts-grid">
+              <article className="pd-fact-card">
+                <span className="pd-fact-label">Breed</span>
+                <strong className="pd-fact-value">{pet.breed || "Unknown"}</strong>
+              </article>
+              <article className="pd-fact-card">
+                <span className="pd-fact-label">Age</span>
+                <strong className="pd-fact-value">{pet.age || "Unknown"}</strong>
+              </article>
+              <article className="pd-fact-card">
+                <span className="pd-fact-label">Gender</span>
+                <strong className="pd-fact-value">{toTitleCase(pet.gender || "Unknown")}</strong>
+              </article>
+              <article className="pd-fact-card">
+                <span className="pd-fact-label">Status</span>
+                <strong className="pd-fact-value">{pet.adopted ? "Adopted" : "Available"}</strong>
+              </article>
+            </div>
+
+            <div className="pd-health-strip">
+              <div className="pd-health-pill">
+                <span className="pd-health-label">Vaccination</span>
+                <strong>{pet.is_vaccinated ? "Confirmed" : "Ask rehomer"}</strong>
               </div>
-              <div style={styles.compatibilityItem}>
-                <strong>Grooming Needs:</strong> {formatCompatibilityValue(pet.grooming_needs)}
+              <div className="pd-health-pill">
+                <span className="pd-health-label">Deworming</span>
+                <strong>{pet.is_dewormed ? "Confirmed" : "Ask rehomer"}</strong>
               </div>
-              <div style={styles.compatibilityItem}>
-                <strong>Noise Level:</strong> {formatCompatibilityValue(pet.noise_level)}
-              </div>
-              <div style={styles.compatibilityItem}>
-                <strong>Apartment Friendly:</strong> {formatCompatibilityValue(pet.apartment_friendly)}
-              </div>
-              <div style={styles.compatibilityItem}>
-                <strong>Good With Children:</strong> {formatCompatibilityValue(pet.good_with_children)}
-              </div>
-              <div style={styles.compatibilityItem}>
-                <strong>Good With Other Pets:</strong> {formatCompatibilityValue(pet.good_with_other_pets)}
+              <div className="pd-health-pill">
+                <span className="pd-health-label">Neutered</span>
+                <strong>{pet.is_neutered ? "Yes" : "Not shared"}</strong>
               </div>
             </div>
           </div>
-          
-          {pet.requirements && (
-            <div style={styles.section}>
-              <h2>Special Requirements</h2>
-              <p>{pet.requirements}</p>
-            </div>
-          )}
+        </section>
 
-          {canManageListing && (
-            <div style={styles.manageSection}>
-              <h2 style={styles.manageHeading}>Manage listing notes</h2>
-              <p style={styles.manageCopy}>
-                You can fix notes, location details, and add more pet photos here. Core details like name, age,
-                breed, and species stay locked.
+        <section className="pd-content-grid">
+          <div className="pd-main-column">
+            <article className="pd-card">
+              <div className="pd-card-head">
+                <span className="pd-card-kicker">About</span>
+                <h2>Meet {pet.name}</h2>
+              </div>
+              <p className="pd-body-copy">{pet.description || "The rehomer has not added a full description yet."}</p>
+            </article>
+
+            <article className="pd-card">
+              <div className="pd-card-head">
+                <span className="pd-card-kicker">Personality</span>
+                <h2>What {pet.name} is like</h2>
+              </div>
+              <div className="pd-traits">
+                {(pet.personality?.length ? pet.personality : ["Still getting to know this pet"]).map((trait, index) => (
+                  <span key={`${trait}-${index}`} className="pd-trait-chip">
+                    {trait}
+                  </span>
+                ))}
+              </div>
+            </article>
+
+            <article className="pd-card">
+              <div className="pd-card-head">
+                <span className="pd-card-kicker">Care</span>
+                <h2>Care and compatibility</h2>
+              </div>
+              <div className="pd-care-grid">
+                <div className="pd-care-item"><span>Energy level</span><strong>{formatCompatibilityValue(pet.energy_level)}</strong></div>
+                <div className="pd-care-item"><span>Care level</span><strong>{formatCompatibilityValue(pet.care_level)}</strong></div>
+                <div className="pd-care-item"><span>Space needed</span><strong>{formatCompatibilityValue(pet.space_needed)}</strong></div>
+                <div className="pd-care-item"><span>Grooming needs</span><strong>{formatCompatibilityValue(pet.grooming_needs)}</strong></div>
+                <div className="pd-care-item"><span>Noise level</span><strong>{formatCompatibilityValue(pet.noise_level)}</strong></div>
+                <div className="pd-care-item"><span>Apartment friendly</span><strong>{formatCompatibilityValue(pet.apartment_friendly)}</strong></div>
+                <div className="pd-care-item"><span>Good with children</span><strong>{formatCompatibilityValue(pet.good_with_children)}</strong></div>
+                <div className="pd-care-item"><span>Good with other pets</span><strong>{formatCompatibilityValue(pet.good_with_other_pets)}</strong></div>
+              </div>
+            </article>
+
+            {pet.requirements ? (
+              <article className="pd-card">
+                <div className="pd-card-head">
+                  <span className="pd-card-kicker">Needs</span>
+                  <h2>Special requirements</h2>
+                </div>
+                <p className="pd-body-copy">{pet.requirements}</p>
+              </article>
+            ) : null}
+
+            {canManageListing ? (
+              <article className="pd-card pd-card--owner">
+                <div className="pd-card-head">
+                  <span className="pd-card-kicker">Manage Listing</span>
+                  <h2>Update your listing notes</h2>
+                </div>
+                <p className="pd-body-copy">You can update the location, improve the description, and add more photos here. Core pet details stay locked.</p>
+                {actionError ? <p className="pd-error">{actionError}</p> : null}
+                <div className="pd-form-grid">
+                  <label className="pd-field">
+                    <span>Location</span>
+                    <input
+                      name="location"
+                      value={ownerForm.location}
+                      onChange={handleOwnerFormChange}
+                      className="pd-input"
+                      placeholder="Update location"
+                    />
+                  </label>
+                  <label className="pd-field">
+                    <span>About this pet</span>
+                    <textarea
+                      name="description"
+                      value={ownerForm.description}
+                      onChange={handleOwnerFormChange}
+                      className="pd-textarea"
+                      rows={5}
+                      placeholder="Refresh the description for adopters"
+                    />
+                  </label>
+                </div>
+                <div className="pd-owner-actions">
+                  <button
+                    type="button"
+                    onClick={handleOwnerNotesSave}
+                    className="pd-primary-button"
+                    disabled={isUpdatingOwnerNotes}
+                  >
+                    {isUpdatingOwnerNotes ? "Saving..." : "Save changes"}
+                  </button>
+                  <label className="pd-secondary-button">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAddExtraImage}
+                      className="pd-hidden-input"
+                    />
+                    {isUploadingExtraImage ? "Uploading image..." : "Add another photo"}
+                  </label>
+                </div>
+              </article>
+            ) : null}
+          </div>
+
+          <aside className="pd-side-column">
+            <article className="pd-card pd-card--warm">
+              <div className="pd-card-head">
+                <span className="pd-card-kicker">Rehomer</span>
+                <h2>Ask about this pet</h2>
+              </div>
+              <p className="pd-body-copy">
+                Ask about food, vaccination records, behavior, routines, or anything else that matters before adopting.
               </p>
-              {actionError && <p style={styles.errorMessage}>{actionError}</p>}
-              <div style={styles.manageForm}>
-                <label style={styles.manageField}>
-                  <span style={styles.manageLabel}>Location</span>
-                  <input
-                    name="location"
-                    value={ownerForm.location}
-                    onChange={handleOwnerFormChange}
-                    style={styles.manageInput}
-                    placeholder="Update location"
-                  />
-                </label>
-                <label style={styles.manageField}>
-                  <span style={styles.manageLabel}>About this pet</span>
-                  <textarea
-                    name="description"
-                    value={ownerForm.description}
-                    onChange={handleOwnerFormChange}
-                    style={styles.manageTextarea}
-                    rows={4}
-                    placeholder="Correct any wording or spelling here"
-                  />
-                </label>
-              </div>
-              <div style={styles.manageActions}>
-                <button
-                  type="button"
-                  onClick={handleOwnerNotesSave}
-                  style={styles.saveChangesButton}
-                  disabled={isUpdatingOwnerNotes}
-                >
-                  {isUpdatingOwnerNotes ? "Saving..." : "Save note changes"}
-                </button>
-                <label style={styles.addImageButton}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleAddExtraImage}
-                    style={styles.hiddenFileInput}
-                  />
-                  {isUploadingExtraImage ? "Uploading image..." : "Add another photo"}
-                </label>
-              </div>
-            </div>
-          )}
-          
-          {canShowAdopterActions && (
-            <div style={styles.actionSection}>
-              {actionError && (
-                <p style={styles.errorMessage}>{actionError}</p>
-              )}
-              <button
-                onClick={handleSaveToPetPouch}
-                style={styles.saveButton}
-                disabled={isSaving || isSaved}
-              >
-                {isSaved ? "Saved to Pet Pouch" : isSaving ? "Saving..." : "Save to Pet Pouch"}
-              </button>
-              {isInterested ? (
-                <p style={styles.successMessage}>
-                  Thank you for your interest! The rehomer will contact you soon.
-                </p>
+              {canShowAdopterActions ? (
+                <>
+                  {actionError ? <p className="pd-error">{actionError}</p> : null}
+                  {isLoggedIn ? (
+                    <>
+                      <textarea
+                        value={inquiryMessage}
+                        onChange={(event) => setInquiryMessage(event.target.value)}
+                        className="pd-textarea"
+                        rows={6}
+                        placeholder="Write your question to the rehomer"
+                      />
+                      <div className="pd-side-actions">
+                        <button
+                          type="button"
+                          onClick={handleInquirySubmit}
+                          className="pd-primary-button"
+                          disabled={isSubmitting || isInterested}
+                        >
+                          {isInterested ? "Message sent" : isSubmitting ? "Sending..." : "Send question to rehomer"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveToPetPouch}
+                          className="pd-secondary-button"
+                          disabled={isSaving || isSaved}
+                        >
+                          {isSaved ? "Saved to Pet Pouch" : isSaving ? "Saving..." : "Save to Pet Pouch"}
+                        </button>
+                      </div>
+                      {isInterested ? (
+                        <p className="pd-success">Your question has been sent. The rehomer can now see your interest and message.</p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="pd-login-card">
+                      <p>Log in to message the rehomer and keep track of your interest in {pet.name}.</p>
+                      <button type="button" onClick={() => navigate("/login/user")} className="pd-primary-button">
+                        Log in to ask a question
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
-                <button 
-                  onClick={handleAdoptInterest}
-                  style={styles.adoptButton}
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? "Submitting..." : "I'm Interested in Adopting"}
-                </button>
+                <p className="pd-body-copy">Adopter contact tools only appear for available pets that you do not own.</p>
               )}
-            </div>
-          )}
+            </article>
 
-        </div>
+            <article className="pd-card">
+              <div className="pd-card-head">
+                <span className="pd-card-kicker">Quick Notes</span>
+                <h2>What to ask next</h2>
+              </div>
+              <div className="pd-checklist">
+                <div className="pd-checklist-item">Ask about feeding routine and favorite foods.</div>
+                <div className="pd-checklist-item">Confirm vaccination and deworming records.</div>
+                <div className="pd-checklist-item">Find out how the pet behaves with children or other pets.</div>
+                <div className="pd-checklist-item">Ask what kind of space, walks, or play this pet needs.</div>
+              </div>
+            </article>
+
+            {canShowAdopterActions && !isInterested ? (
+              <article className="pd-card">
+                <div className="pd-card-head">
+                  <span className="pd-card-kicker">Adoption</span>
+                  <h2>Ready to take the next step?</h2>
+                </div>
+                <p className="pd-body-copy">
+                  If you already have enough information, you can send a direct adoption interest to the rehomer.
+                </p>
+                <div className="pd-side-actions">
+                  <button
+                    type="button"
+                    onClick={handleAdoptInterest}
+                    className="pd-primary-button"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "Submitting..." : "I'm interested in adopting"}
+                  </button>
+                </div>
+              </article>
+            ) : null}
+          </aside>
+        </section>
       </div>
     </div>
   );
-};
-
-const styles = {
-  container: {
-    maxWidth: "1200px",
-    margin: "0 auto",
-    padding: "20px",
-  },
-  backButton: {
-    backgroundColor: "transparent",
-    border: "none",
-    color: "#FFA500",
-    fontSize: "16px",
-    cursor: "pointer",
-    marginBottom: "20px",
-    display: "flex",
-    alignItems: "center",
-    gap: "5px",
-  },
-  petContainer: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "40px",
-    "@media (max-width: 768px)": {
-      gridTemplateColumns: "1fr",
-    },
-  },
-  imageContainer: {
-    position: "relative",
-    borderRadius: "10px",
-    overflow: "hidden",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-  },
-  petImage: {
-    width: "100%",
-    height: "100%",
-    minHeight: "520px",
-    objectFit: "cover",
-    display: "block",
-  },
-  imageNavButtonLeft: {
-    position: "absolute",
-    left: "16px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    border: "none",
-    borderRadius: "999px",
-    width: "42px",
-    height: "42px",
-    backgroundColor: "rgba(255, 255, 255, 0.92)",
-    color: "#d97706",
-    fontSize: "28px",
-    cursor: "pointer",
-  },
-  imageNavButtonRight: {
-    position: "absolute",
-    right: "16px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    border: "none",
-    borderRadius: "999px",
-    width: "42px",
-    height: "42px",
-    backgroundColor: "rgba(255, 255, 255, 0.92)",
-    color: "#d97706",
-    fontSize: "28px",
-    cursor: "pointer",
-  },
-  imageDots: {
-    position: "absolute",
-    left: "50%",
-    bottom: "16px",
-    transform: "translateX(-50%)",
-    display: "flex",
-    gap: "8px",
-  },
-  imageDot: {
-    width: "10px",
-    height: "10px",
-    borderRadius: "999px",
-    border: "none",
-    backgroundColor: "rgba(255,255,255,0.6)",
-    cursor: "pointer",
-  },
-  imageDotActive: {
-    backgroundColor: "#FFA500",
-  },
-  detailsContainer: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "25px",
-  },
-  petName: {
-    fontSize: "32px",
-    color: "#333",
-    margin: "0",
-  },
-  rehomer: {
-    color: "#666",
-    fontSize: "16px",
-    margin: "5px 0 0",
-  },
-  rehomerStatus: {
-    color: "#d97706",
-    fontSize: "14px",
-    fontWeight: "600",
-    margin: "-10px 0 0",
-  },
-  detailsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, 1fr)",
-    gap: "15px",
-    backgroundColor: "#f9f9f9",
-    padding: "20px",
-    borderRadius: "8px",
-  },
-  detailItem: {
-    h3: {
-      margin: "0 0 5px",
-      fontSize: "14px",
-      color: "#666",
-    },
-    p: {
-      margin: "0",
-      fontSize: "18px",
-      fontWeight: "500",
-    },
-  },
-  section: {
-    h2: {
-      fontSize: "20px",
-      margin: "0 0 15px",
-      color: "#444",
-    },
-    p: {
-      margin: "0",
-      lineHeight: "1.6",
-    },
-  },
-  traitsContainer: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "10px",
-  },
-  compatibilityGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: "12px",
-    backgroundColor: "#f9f9f9",
-    padding: "16px",
-    borderRadius: "8px",
-  },
-  compatibilityItem: {
-    fontSize: "14px",
-    color: "#444",
-    lineHeight: "1.6",
-  },
-  trait: {
-    backgroundColor: "#FFA500",
-    color: "white",
-    padding: "6px 12px",
-    borderRadius: "20px",
-    fontSize: "14px",
-  },
-  actionSection: {
-    marginTop: "30px",
-    paddingTop: "20px",
-    borderTop: "1px solid #eee",
-  },
-  manageSection: {
-    marginTop: "8px",
-    padding: "22px",
-    borderRadius: "14px",
-    backgroundColor: "#fffaf0",
-    border: "1px solid #f5d7a5",
-  },
-  manageHeading: {
-    fontSize: "22px",
-    margin: "0 0 8px",
-    color: "#7c4a03",
-  },
-  manageCopy: {
-    margin: "0 0 18px",
-    color: "#6b5d45",
-    lineHeight: "1.7",
-  },
-  manageForm: {
-    display: "grid",
-    gap: "14px",
-  },
-  manageField: {
-    display: "grid",
-    gap: "8px",
-  },
-  manageLabel: {
-    fontWeight: "600",
-    color: "#5c430d",
-  },
-  manageInput: {
-    width: "100%",
-    border: "1px solid #e8c48c",
-    borderRadius: "10px",
-    padding: "12px 14px",
-    fontSize: "15px",
-    outline: "none",
-  },
-  manageTextarea: {
-    width: "100%",
-    border: "1px solid #e8c48c",
-    borderRadius: "10px",
-    padding: "12px 14px",
-    fontSize: "15px",
-    outline: "none",
-    resize: "vertical",
-  },
-  manageActions: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "12px",
-    marginTop: "18px",
-  },
-  saveChangesButton: {
-    backgroundColor: "#FFA500",
-    color: "#fff",
-    border: "none",
-    borderRadius: "8px",
-    padding: "12px 18px",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
-  addImageButton: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    border: "1px solid #f0bf77",
-    backgroundColor: "#fff",
-    color: "#d97706",
-    borderRadius: "8px",
-    padding: "12px 18px",
-    fontWeight: "600",
-    cursor: "pointer",
-  },
-  hiddenFileInput: {
-    display: "none",
-  },
-  adoptButton: {
-    backgroundColor: "#FFA500",
-    color: "white",
-    border: "none",
-    padding: "12px 25px",
-    borderRadius: "5px",
-    fontSize: "16px",
-    fontWeight: "600",
-    cursor: "pointer",
-    transition: "background-color 0.3s",
-    "&:hover": {
-      backgroundColor: "#e69500",
-    },
-  },
-  saveButton: {
-    backgroundColor: "white",
-    color: "#FFA500",
-    border: "1px solid #FFA500",
-    padding: "12px 25px",
-    borderRadius: "5px",
-    fontSize: "16px",
-    fontWeight: "600",
-    cursor: "pointer",
-    marginRight: "12px",
-    marginBottom: "12px",
-  },
-  successMessage: {
-    color: "#4CAF50",
-    fontSize: "16px",
-  },
-  errorMessage: {
-    color: "#c53030",
-    fontSize: "15px",
-    marginBottom: "12px",
-  },
 };
 
 export default PetDetail;
