@@ -1,8 +1,8 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
+const API_BASE_URL = "http://127.0.0.1:8000/api";
 
 const ACCESS_TOKEN_KEY = "pet_adoption_access_token";
 const REFRESH_TOKEN_KEY = "pet_adoption_refresh_token";
+let refreshPromise = null;
 
 export class ApiError extends Error {
   constructor(message, status, data = null) {
@@ -96,6 +96,10 @@ function buildErrorMessage(response, data) {
 }
 
 async function refreshAccessToken() {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
   const refresh = getRefreshToken();
 
   if (!refresh) {
@@ -103,27 +107,35 @@ async function refreshAccessToken() {
     return null;
   }
 
-  const response = await fetch(buildUrl("/auth/token/refresh/"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ refresh }),
-  });
+  refreshPromise = (async () => {
+    const response = await fetch(buildUrl("/auth/token/refresh/"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ refresh }),
+    });
 
-  const data = await parseResponse(response);
+    const data = await parseResponse(response);
 
-  if (!response.ok || !data?.access) {
-    clearTokens();
-    throw new ApiError(
-      buildErrorMessage(response, data),
-      response.status,
-      data,
-    );
+    if (!response.ok || !data?.access) {
+      clearTokens();
+      throw new ApiError(
+        buildErrorMessage(response, data),
+        response.status,
+        data,
+      );
+    }
+
+    setTokens(data.access, refresh);
+    return data.access;
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
   }
-
-  setTokens(data.access, refresh);
-  return data.access;
 }
 
 export async function apiRequest(
@@ -226,6 +238,25 @@ export async function sendHeartbeat() {
   });
 }
 
+export async function getAdminDashboard() {
+  return apiRequest("/admin/dashboard/");
+}
+
+export async function getAdminUsers() {
+  return apiRequest("/admin/users/");
+}
+
+export async function getAdminPets() {
+  return apiRequest("/admin/pets/");
+}
+
+export async function reviewRehomerRequest(userId, data) {
+  return apiRequest(`/admin/rehomer-reviews/${userId}/`, {
+    method: "POST",
+    data,
+  });
+}
+
 export async function listPets(params = {}) {
   return apiRequest("/pets/", { params });
 }
@@ -265,12 +296,47 @@ export async function createAdoptionApplication(data) {
   });
 }
 
+export async function listConversations() {
+  return apiRequest("/conversations/");
+}
+
+export async function startConversation(petId) {
+  return apiRequest("/conversations/", {
+    method: "POST",
+    data: { pet_id: Number(petId) },
+  });
+}
+
+export async function getConversation(id) {
+  return apiRequest(`/conversations/${id}/`);
+}
+
+export async function sendConversationMessage(id, body) {
+  return apiRequest(`/conversations/${id}/messages/`, {
+    method: "POST",
+    data: { body },
+  });
+}
+
 export async function listMyApplications() {
   return apiRequest("/applications/my/");
 }
 
 export async function listReceivedApplications() {
   return apiRequest("/applications/received/");
+}
+
+export async function proposeVisitPlan(id, data) {
+  return apiRequest(`/applications/${id}/visit-plan/`, {
+    method: "POST",
+    data,
+  });
+}
+
+export async function acceptVisitPlan(id) {
+  return apiRequest(`/applications/${id}/visit-plan/accept/`, {
+    method: "POST",
+  });
 }
 
 export async function approveApplication(id) {
@@ -317,6 +383,45 @@ export async function getUnreadNotificationCount() {
   return apiRequest("/notifications/unread-count/");
 }
 
+export async function listCommunityPosts() {
+  return apiRequest("/community/posts/");
+}
+
+export async function createCommunityPost(data) {
+  return apiRequest("/community/posts/", {
+    method: "POST",
+    data,
+  });
+}
+
+export async function createCommunityComment(postId, data) {
+  return apiRequest(`/community/posts/${postId}/comments/`, {
+    method: "POST",
+    data,
+  });
+}
+
+export async function reactToCommunityPost(postId, value) {
+  return apiRequest(`/community/posts/${postId}/reaction/`, {
+    method: "POST",
+    data: { value },
+  });
+}
+
+export async function reactToCommunityComment(commentId, value) {
+  return apiRequest(`/community/comments/${commentId}/reaction/`, {
+    method: "POST",
+    data: { value },
+  });
+}
+
+export async function repostCommunityPost(postId, data = {}) {
+  return apiRequest(`/community/posts/${postId}/repost/`, {
+    method: "POST",
+    data,
+  });
+}
+
 export default {
   API_BASE_URL,
   ApiError,
@@ -331,6 +436,10 @@ export default {
   updateCurrentUser,
   submitRehomerVerification,
   sendHeartbeat,
+  getAdminDashboard,
+  getAdminUsers,
+  getAdminPets,
+  reviewRehomerRequest,
   listPets,
   listMyPets,
   getPetDetail,
@@ -340,6 +449,8 @@ export default {
   createAdoptionApplication,
   listMyApplications,
   listReceivedApplications,
+  proposeVisitPlan,
+  acceptVisitPlan,
   approveApplication,
   rejectApplication,
   listWishlist,
@@ -348,4 +459,10 @@ export default {
   listNotifications,
   markNotificationRead,
   getUnreadNotificationCount,
+  listCommunityPosts,
+  createCommunityPost,
+  createCommunityComment,
+  reactToCommunityPost,
+  reactToCommunityComment,
+  repostCommunityPost,
 };

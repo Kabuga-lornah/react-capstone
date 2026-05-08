@@ -1,16 +1,46 @@
 .rehomer-profile-shell {
-  min-height: calc(100vh - 160px);
-  background:
-    radial-gradient(circle at top left, rgba(255, 190, 118, 0.22), transparent 28%),
-    radial-gradient(circle at top right, rgba(255, 225, 178, 0.26), transparent 24%),
-    linear-gradient(180deg, #fffaf4 0%, #ffffff 45%, #fffdf9 100%);
-  padding: 32px 16px 48px;
+  font-family: "Nunito", sans-serif;
+  background: #fff8ee;
+  min-height: 100vh;
+  max-width: 430px;
+  margin: 0 auto;
+  position: relative;
+  overflow-x: hidden;
+  padding: 12px 16px 108px;
+}
+
+.rehomer-profile-shell::before,
+.rehomer-profile-shell::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(50px);
+  z-index: 0;
+}
+
+.rehomer-profile-shell::before {
+  top: -60px;
+  right: -60px;
+  width: 200px;
+  height: 200px;
+  background: #ffcd7a;
+  opacity: 0.3;
+}
+
+.rehomer-profile-shell::after {
+  top: 320px;
+  left: -80px;
+  width: 180px;
+  height: 180px;
+  background: #ffaa33;
+  opacity: 0.18;
 }
 
 .rehomer-profile-page {
-  max-width: 1240px;
+  position: relative;
+  z-index: 1;
   width: 100%;
-  margin: 0 auto;
 }
 
 .rehomer-profile-page,
@@ -19,11 +49,32 @@
 }
 
 .rehomer-profile-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #ff9900 0%, #e87000 100%);
+  padding: 14px 15px 12px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(255, 140, 0, 0.35);
+  animation: rehomer-profile-fadein 0.35s ease;
+}
+
+.rehomer-profile-hero::after {
+  content: "";
+  position: absolute;
+  top: -40%;
+  left: -20%;
+  width: 55%;
+  height: 200%;
+  background: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-15deg);
+  pointer-events: none;
+  animation: rehomer-profile-shimmer 3s infinite;
 }
 
 .rehomer-profile-badge,
@@ -31,36 +82,45 @@
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 9px 14px;
-  font-size: 0.78rem;
+  padding: 8px 13px;
+  font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .rehomer-profile-badge {
-  background: #fff4df;
-  color: #de7407;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff7e6;
+  padding: 6px 11px;
+  font-size: 0.66rem;
 }
 
 .rehomer-profile-hero h1 {
-  margin: 16px 0 10px;
-  font-size: clamp(2rem, 4vw, 3.4rem);
-  color: #d35400;
+  margin: 10px 0 5px;
+  font-family: "Playfair Display", serif;
+  font-size: 1.22rem;
+  line-height: 1.1;
+  color: #fff;
 }
 
 .rehomer-profile-hero p {
   margin: 0;
-  max-width: 720px;
-  line-height: 1.8;
-  color: #615b54;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.84);
 }
 
 .rehomer-profile-status {
-  padding: 12px 16px;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
   border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.64rem;
   font-weight: 800;
-  white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 
 .rehomer-profile-status--incomplete {
@@ -69,13 +129,13 @@
 }
 
 .rehomer-profile-status--pending {
-  background: #fff4df;
-  color: #c97308;
+  background: #fff1cc;
+  color: #b85d00;
 }
 
 .rehomer-profile-status--verified {
-  background: #ecfff4;
-  color: #1f8a58;
+  background: #e8f9ee;
+  color: #1a7a48;
 }
 
 .rehomer-profile-status--rejected {
@@ -84,94 +144,118 @@
 }
 
 .rehomer-profile-banner {
-  border-radius: 18px;
-  padding: 14px 18px;
-  font-weight: 600;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
 }
 
 .rehomer-profile-banner--success {
-  background: #f2fff5;
-  color: #23764d;
+  background: #f0fff5;
+  color: #1a7a48;
   border: 1px solid #b9e5c9;
 }
 
 .rehomer-profile-banner--error {
-  background: #fff4f4;
+  background: #fff1f1;
   color: #c53030;
   border: 1px solid #f6b7b7;
 }
 
 .rehomer-profile-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 24px;
+  gap: 16px;
 }
 
 .rehomer-profile-side,
 .rehomer-profile-upload-list {
   display: grid;
-  gap: 20px;
+  gap: 16px;
 }
 
 .rehomer-profile-card {
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(255, 174, 91, 0.16);
-  border-radius: 28px;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.05);
-  padding: 24px;
+  background: linear-gradient(145deg, #fffaf2, #ffffff);
+  border: 1px solid rgba(255, 180, 50, 0.25);
+  border-radius: 22px;
+  padding: 18px;
+  box-shadow: 0 4px 14px rgba(255, 153, 0, 0.06);
 }
 
 .rehomer-profile-card__header {
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .rehomer-profile-card__eyebrow {
-  background: #fff7ea;
-  color: #e17b0d;
+  background: #fff3df;
+  color: #d96a00;
 }
 
 .rehomer-profile-card__header h2 {
-  margin: 14px 0 8px;
-  color: #2f2f2f;
+  margin: 14px 0 6px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #2a1500;
 }
 
 .rehomer-profile-card__header p {
   margin: 0;
-  color: #6a645d;
-  line-height: 1.7;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  color: #7a5c35;
 }
 
 .rehomer-profile-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
 .rehomer-profile-field {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .rehomer-profile-field--wide {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .rehomer-profile-field span {
   color: #2f2f2f;
-  font-weight: 700;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.rehomer-profile-field span em {
+  font-style: normal;
+  color: #e07800;
 }
 
 .rehomer-profile-field input,
 .rehomer-profile-field textarea {
   width: 100%;
   border: 1px solid rgba(223, 191, 148, 0.7);
-  border-radius: 18px;
+  border-radius: 16px;
   background: white;
-  padding: 14px 16px;
-  font-size: 0.96rem;
+  padding: 13px 15px;
+  font-size: 0.94rem;
   color: #2f2f2f;
   outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.rehomer-profile-field input:disabled,
+.rehomer-profile-field textarea:disabled {
+  background: #f8f1e6;
+  color: #8d7a5f;
+  cursor: not-allowed;
+  border-color: rgba(223, 191, 148, 0.5);
+  box-shadow: none;
+}
+
+.rehomer-profile-field textarea {
+  resize: vertical;
+  min-height: 110px;
 }
 
 .rehomer-profile-field input:focus,
@@ -182,70 +266,82 @@
 
 .rehomer-profile-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 20px;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
 }
 
 .rehomer-profile-button {
-  border: none;
-  border-radius: 999px;
-  padding: 14px 20px;
-  font-size: 0.96rem;
+  width: 100%;
+  border-radius: 16px;
+  padding: 13px 18px;
+  font-size: 0.9rem;
   font-weight: 800;
+  border: none;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rehomer-profile-button:active {
+  transform: scale(0.98);
 }
 
 .rehomer-profile-button--primary {
-  background: linear-gradient(135deg, #ff9b2f 0%, #ff7f11 100%);
-  color: white;
-  box-shadow: 0 14px 28px rgba(255, 127, 17, 0.25);
+  background: linear-gradient(135deg, #ff9900 0%, #e87800 100%);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(255, 140, 0, 0.35);
 }
 
 .rehomer-profile-button--secondary {
-  background: white;
-  color: #e46e00;
-  border: 1px solid rgba(255, 174, 91, 0.28);
+  background: rgba(255, 255, 255, 0.92);
+  color: #c07000;
+  border: 1.5px solid rgba(255, 180, 50, 0.35);
 }
 
 .rehomer-profile-upload {
   display: grid;
   gap: 12px;
-  padding: 18px;
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 251, 245, 0.9) 0%, rgba(255, 255, 255, 0.96) 100%);
-  border: 1px solid rgba(255, 174, 91, 0.16);
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 248, 236, 0.7);
+  border: 1px solid rgba(255, 180, 50, 0.2);
 }
 
 .rehomer-profile-upload strong {
-  color: #2f2f2f;
+  display: block;
+  font-size: 0.9rem;
+  color: #2a1500;
 }
 
 .rehomer-profile-upload p,
 .rehomer-profile-notes p {
   margin: 4px 0 0;
-  color: #6a645d;
-  line-height: 1.65;
+  font-size: 0.8rem;
+  color: #7a5c35;
+  line-height: 1.6;
 }
 
 .rehomer-profile-upload__image {
   width: 100%;
-  max-height: 180px;
+  max-height: 170px;
   object-fit: cover;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 174, 91, 0.16);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 180, 50, 0.18);
+  background: #ffe4b0;
 }
 
 .rehomer-profile-upload__button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
-  padding: 12px 18px;
-  background: #fff6e8;
+  width: 100%;
+  border-radius: 14px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.92);
   color: #d96a00;
-  border: 1px solid rgba(255, 174, 91, 0.2);
-  font-weight: 700;
+  border: 1.5px solid rgba(255, 180, 50, 0.28);
+  font-size: 0.84rem;
+  font-weight: 800;
   cursor: pointer;
 }
 
@@ -253,45 +349,78 @@
   display: none;
 }
 
+.rehomer-profile-upload__locked {
+  width: 100%;
+  border-radius: 14px;
+  padding: 12px 16px;
+  background: #f8f1e6;
+  color: #8d7a5f;
+  border: 1.5px solid rgba(223, 191, 148, 0.45);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 .rehomer-profile-checklist {
   display: grid;
   gap: 10px;
-  margin-bottom: 20px;
-  color: #554f49;
+  margin-bottom: 18px;
+}
+
+.rehomer-profile-checklist div {
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: rgba(255, 248, 236, 0.7);
+  border: 1px solid rgba(255, 180, 50, 0.18);
+  color: #7a5c35;
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .rehomer-profile-notes {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 174, 91, 0.16);
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fff3dc, #ffe9be);
+  border: 1px solid rgba(255, 180, 50, 0.26);
 }
 
 .rehomer-profile-notes strong {
+  display: block;
+  margin-bottom: 6px;
   color: #9a5a00;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-@media (max-width: 980px) {
-  .rehomer-profile-layout {
-    grid-template-columns: 1fr;
+@keyframes rehomer-profile-fadein {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-@media (max-width: 700px) {
-  .rehomer-profile-shell {
-    padding: 24px 12px 36px;
+@keyframes rehomer-profile-shimmer {
+  0% {
+    left: -100%;
   }
-
-  .rehomer-profile-hero {
-    flex-direction: column;
-    align-items: flex-start;
+  100% {
+    left: 220%;
   }
+}
 
+@media (min-width: 700px) {
   .rehomer-profile-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
-  .rehomer-profile-actions,
-  .rehomer-profile-button {
-    width: 100%;
+  .rehomer-profile-field--wide {
+    grid-column: 1 / -1;
   }
 }

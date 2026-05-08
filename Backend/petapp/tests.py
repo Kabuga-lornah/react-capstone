@@ -5,7 +5,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from datetime import timedelta
 
-from .models import AdoptionApplication, Notification, Pet, PetImage, PetWishlist
+from .models import AdoptionApplication, Conversation, Notification, Pet, PetImage, PetWishlist
 
 
 User = get_user_model()
@@ -70,20 +70,35 @@ class PetApiFlowTests(APITestCase):
 
     def test_user_registration(self):
         payload = {
-            "username": "newuser",
             "email": "newuser@example.com",
             "password": self.password,
             "first_name": "New",
             "last_name": "User",
             "role": "adopter",
             "phone_number": "12345",
-            "bio": "Excited to adopt.",
         }
 
         response = self.client.post(reverse("auth-register"), payload, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.assertTrue(User.objects.filter(username="newuser").exists())
+        self.assertTrue(User.objects.filter(username="newuser@example.com").exists())
+
+    def test_registration_requires_phone_and_split_name_fields(self):
+        payload = {
+            "email": "missingfields@example.com",
+            "password": self.password,
+            "first_name": "",
+            "last_name": "",
+            "role": "adopter",
+            "phone_number": "",
+        }
+
+        response = self.client.post(reverse("auth-register"), payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+        self.assertIn("first_name", response.data)
+        self.assertIn("last_name", response.data)
+        self.assertIn("phone_number", response.data)
 
     def test_rehomer_can_submit_verification_profile(self):
         pending_rehomer = User.objects.create_user(
@@ -244,6 +259,93 @@ class PetApiFlowTests(APITestCase):
         }
 
         response = self.client.post(reverse("pet-create"), payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+
+    def test_adopter_can_start_conversation_for_pet(self):
+        self.authenticate(self.adopter.username, self.password)
+
+        response = self.client.post(
+            reverse("conversation-list-create"),
+            {"pet_id": self.pet.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(
+            Conversation.objects.filter(
+                pet=self.pet,
+                adopter=self.adopter,
+                rehomer=self.rehomer,
+            ).exists()
+        )
+        self.assertEqual(response.data["other_participant"]["id"], self.rehomer.id)
+
+    def test_conversation_is_reused_for_same_pet_and_adopter(self):
+        Conversation.objects.create(
+            pet=self.pet,
+            adopter=self.adopter,
+            rehomer=self.rehomer,
+        )
+        self.authenticate(self.adopter.username, self.password)
+
+        response = self.client.post(
+            reverse("conversation-list-create"),
+            {"pet_id": self.pet.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertFalse(response.data["created"])
+        self.assertEqual(Conversation.objects.count(), 1)
+
+    def test_conversation_detail_returns_messages_and_marks_unread_as_read(self):
+        conversation = Conversation.objects.create(
+            pet=self.pet,
+            adopter=self.adopter,
+            rehomer=self.rehomer,
+        )
+        message = conversation.messages.create(
+            sender=self.rehomer,
+            body="Hi, Milo eats twice a day.",
+        )
+
+        self.authenticate(self.adopter.username, self.password)
+        response = self.client.get(reverse("conversation-detail", args=[conversation.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(len(response.data["messages"]), 1)
+        self.assertEqual(response.data["messages"][0]["body"], "Hi, Milo eats twice a day.")
+        message.refresh_from_db()
+        self.assertIsNotNone(message.read_at)
+
+    def test_user_in_conversation_can_send_message(self):
+        conversation = Conversation.objects.create(
+            pet=self.pet,
+            adopter=self.adopter,
+            rehomer=self.rehomer,
+        )
+        self.authenticate(self.adopter.username, self.password)
+
+        response = self.client.post(
+            reverse("conversation-message-create", args=[conversation.id]),
+            {"body": "Hi, how old is Milo exactly?"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(conversation.messages.count(), 1)
+        self.assertEqual(response.data["messages"][-1]["body"], "Hi, how old is Milo exactly?")
+
+    def test_non_member_cannot_access_conversation(self):
+        conversation = Conversation.objects.create(
+            pet=self.pet,
+            adopter=self.adopter,
+            rehomer=self.rehomer,
+        )
+        self.authenticate(self.other_adopter.username, self.password)
+
+        response = self.client.get(reverse("conversation-detail", args=[conversation.id]))
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
 

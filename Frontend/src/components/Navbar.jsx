@@ -14,7 +14,7 @@ const getNavLinksByRole = (role, petPouchCount, isVerifiedRehomer) => {
       { label: "Dashboard", to: "/rehomer-dashboard" },
       { label: "My Pets", to: "/rehomer-dashboard?tab=pets" },
       { label: "Requests", to: "/rehomer-dashboard?tab=requests" },
-      { label: "Adoption Tips", to: "/rehomer-dashboard?tab=tips" },
+      { label: "Profile", to: "/rehomer-dashboard?tab=profile" },
       { label: "Public Listings", to: "/pets" },
     ];
 
@@ -28,6 +28,7 @@ const getNavLinksByRole = (role, petPouchCount, isVerifiedRehomer) => {
   if (role === "adopter" || role === "user") {
     return [
       { label: "Quiz", to: "/quiz" },
+      { label: "Community", to: "/community" },
       { label: `Pet Pouch${typeof petPouchCount === "number" ? ` ${petPouchCount}` : ""}`, to: "/pet-pouch" },
       { label: "My Applications", to: "/my-listing" },
     ];
@@ -35,6 +36,7 @@ const getNavLinksByRole = (role, petPouchCount, isVerifiedRehomer) => {
 
   return [
     { label: "Quiz", to: "/quiz" },
+    { label: "Community", to: "/community" },
     { label: "Pet Pouch", to: "/pet-pouch" },
   ];
 };
@@ -42,11 +44,10 @@ const getNavLinksByRole = (role, petPouchCount, isVerifiedRehomer) => {
 const getMobilePrimaryLinks = (role, petPouchCount, isVerifiedRehomer, notificationCount) => {
   if (role === "rehomer" || role === "shelter_admin") {
     return [
-      { label: "Home", to: "/rehomer-dashboard", icon: "home" },
-      { label: isVerifiedRehomer ? "Add Pet" : "My Pets", to: isVerifiedRehomer ? "/add-pet" : "/rehomer-dashboard?tab=pets", icon: isVerifiedRehomer ? "plus" : "paw" },
       { label: "Requests", to: "/rehomer-dashboard?tab=requests", icon: "mail", badge: notificationCount > 0 ? notificationCount : null },
-      { label: "Listings", to: "/pets", icon: "paw" },
-      { label: "Profile", to: "/rehomer-profile", icon: "person" },
+      { label: "My Pets", to: "/rehomer-dashboard?tab=pets", icon: "paw" },
+      { label: "Chats", to: "/chats", icon: "mail" },
+      { label: "Profile", to: "/rehomer-dashboard?tab=profile", icon: "person" },
     ];
   }
 
@@ -54,14 +55,16 @@ const getMobilePrimaryLinks = (role, petPouchCount, isVerifiedRehomer, notificat
     return [
       { label: "Home", to: "/", icon: "paw", iconOnly: true },
       { label: "Quiz", to: "/quiz", icon: "quiz" },
+      { label: "Community", to: "/community", icon: "community" },
       { label: "Pouch", to: "/pet-pouch", icon: "petPouch", badge: typeof petPouchCount === "number" && petPouchCount > 0 ? petPouchCount : null },
-      { label: "Apps", to: "/my-listing", icon: "clipboard" },
+      { label: "Requests", to: "/my-listing", icon: "clipboard" },
     ];
   }
 
   return [
     { label: "Home", to: "/", icon: "paw", iconOnly: true },
     { label: "Quiz", to: "/quiz", icon: "quiz" },
+    { label: "Community", to: "/community", icon: "community" },
     { label: "Pet Pouch", to: "/pet-pouch", icon: "petPouch" },
   ];
 };
@@ -136,6 +139,14 @@ const renderNavIcon = (icon) => {
           <path d="M9 14h6" />
         </svg>
       );
+    case "community":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 18.5c-1.7 0-3-1.3-3-3v-7c0-1.7 1.3-3 3-3h12c1.7 0 3 1.3 3 3v7c0 1.7-1.3 3-3 3H11l-4 3v-3H6Z" />
+          <path d="M8 10h8" />
+          <path d="M8 14h5" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -194,10 +205,20 @@ const Navbar = () => {
   const lastScrollYRef = useRef(0);
   const navigate = useNavigate();
   const location = useLocation();
-
+  const isAuthPage =
+    location.pathname.startsWith("/login") ||
+    location.pathname.startsWith("/signup");
+  const isChatPage = location.pathname.startsWith("/chats");
   const role = userData?.role || user?.role || null;
   const isVerifiedRehomer = userData?.rehomer_verification_status === "verified";
   const isPetManager = role === "rehomer" || role === "shelter_admin";
+  const isRehomerWorkspace =
+    location.pathname.startsWith("/rehomer-dashboard") ||
+    location.pathname.startsWith("/rehomer-profile") ||
+    location.pathname.startsWith("/add-pet");
+  const isRehomerManagedPetPage =
+    isPetManager && location.pathname.startsWith("/pet/");
+  const isAdminWorkspace = location.pathname.startsWith("/admin-dashboard");
   const navLinks = useMemo(
     () => getNavLinksByRole(role, petPouchCount, isVerifiedRehomer),
     [role, petPouchCount, isVerifiedRehomer],
@@ -206,9 +227,29 @@ const Navbar = () => {
     () => getMobilePrimaryLinks(role, petPouchCount, isVerifiedRehomer, notificationCount),
     [role, petPouchCount, isVerifiedRehomer, notificationCount],
   );
+  const isAdopterRole = role === "adopter" || role === "user";
+  const notificationSubtitle =
+    role === "adopter"
+      ? "Replies, request updates, and visit planning"
+      : "Wishlist saves and interest from adopters";
+  const recentNotifications = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    return notifications.filter((notification) => {
+      if (!notification?.created_at) {
+        return false;
+      }
+
+      return new Date(notification.created_at).getTime() >= cutoff;
+    });
+  }, [notifications]);
+  const recentUnreadCount = useMemo(
+    () => recentNotifications.filter((notification) => !notification.read).length,
+    [recentNotifications],
+  );
+  const visibleNotificationCount = isAdopterRole ? recentUnreadCount : notificationCount;
 
   const fetchUnreadCount = async () => {
-    if (!user || !isPetManager) {
+    if (!user) {
       setNotificationCount(0);
       return;
     }
@@ -222,7 +263,7 @@ const Navbar = () => {
   };
 
   const fetchNotifications = async () => {
-    if (!user || !isPetManager) {
+    if (!user) {
       setNotifications([]);
       return;
     }
@@ -273,7 +314,7 @@ const Navbar = () => {
   }, [showDropdown, showNotifications]);
 
   useEffect(() => {
-    if (!user || !isPetManager) {
+    if (!user) {
       setNotifications([]);
       setNotificationCount(0);
       return undefined;
@@ -283,14 +324,14 @@ const Navbar = () => {
     const interval = setInterval(fetchUnreadCount, 60000);
 
     return () => clearInterval(interval);
-  }, [user, isPetManager]);
+  }, [user]);
 
   useEffect(() => {
-    if (showNotifications) {
+    if (showNotifications || showDropdown) {
       fetchNotifications();
       fetchUnreadCount();
     }
-  }, [showNotifications]);
+  }, [showNotifications, showDropdown]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -354,6 +395,21 @@ const Navbar = () => {
     }
 
     closeMenus();
+    if (notification.conversation_id) {
+      navigate(`/chats/${notification.conversation_id}`);
+      return;
+    }
+
+    if (
+      notification.type === "application_approved" ||
+      notification.type === "application_rejected" ||
+      notification.type === "visit_proposed" ||
+      notification.type === "visit_agreed"
+    ) {
+      navigate("/my-listing");
+      return;
+    }
+
     if (notification.pet?.id) {
       navigate(`/pet/${notification.pet.id}`);
     }
@@ -370,6 +426,35 @@ const Navbar = () => {
     verified: "Verified",
     rejected: "Rejected",
   };
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    document.body.classList.toggle("mff-body--auth", isAuthPage);
+
+    return () => {
+      document.body.classList.remove("mff-body--auth");
+    };
+  }, [isAuthPage]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    const isSidebarOpen = Boolean(user && (showDropdown || showNotifications));
+    document.body.classList.toggle("mff-body--sidebar-open", isSidebarOpen);
+
+    return () => {
+      document.body.classList.remove("mff-body--sidebar-open");
+    };
+  }, [showDropdown, showNotifications, user]);
+
+  if (isAuthPage || isChatPage || isRehomerWorkspace || isRehomerManagedPetPage || isAdminWorkspace) {
+    return null;
+  }
 
   return (
     <nav className="mff-navbar">
@@ -411,7 +496,152 @@ const Navbar = () => {
           <div className="mff-navbar__auth">
             {user ? (
               <div className="mff-navbar__user" ref={dropdownRef}>
-                {isPetManager && (
+                {(showDropdown || showNotifications) && user && (
+                  <button
+                    type="button"
+                    className="mff-navbar__mobile-overlay"
+                    onClick={closeMenus}
+                    aria-label="Close open menu"
+                  />
+                )}
+                {(showDropdown || showNotifications) && user && (
+                  <aside
+                    className="mff-navbar__mobile-drawer"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Account and notifications"
+                  >
+                    <div className="mff-navbar__mobile-drawer-header">
+                      <button
+                        type="button"
+                        className="mff-navbar__mobile-drawer-profile"
+                        onClick={() =>
+                          handleMenuNavigate(
+                            role === "rehomer" || role === "shelter_admin"
+                              ? "/rehomer-profile"
+                              : "/profile",
+                          )
+                        }
+                      >
+                        <div className="mff-navbar__mobile-drawer-avatar">
+                          {userData?.profile_photo_url ? (
+                            <img
+                              src={userData.profile_photo_url}
+                              alt={displayName}
+                              className="mff-navbar__dropdown-avatar-image"
+                            />
+                          ) : (
+                            avatarInitial
+                          )}
+                        </div>
+                        <div className="mff-navbar__mobile-drawer-meta">
+                          <span className="mff-navbar__mobile-drawer-label">
+                            View profile
+                          </span>
+                          <strong className="mff-navbar__mobile-drawer-name">
+                            {displayName}
+                          </strong>
+                          {displayEmail ? (
+                            <span className="mff-navbar__mobile-drawer-email">
+                              {displayEmail}
+                            </span>
+                          ) : null}
+                        </div>
+                      </button>
+                    </div>
+
+                    <div className="mff-navbar__mobile-drawer-section">
+                      <div className="mff-navbar__mobile-drawer-section-title">
+                        Alerts and updates
+                      </div>
+                      <div className="mff-navbar__notifications-list mff-navbar__notifications-list--drawer">
+                        {notificationsLoading ? (
+                          <div className="mff-navbar__notifications-state">
+                            Loading notifications...
+                          </div>
+                        ) : (isAdopterRole ? recentNotifications : notifications).length === 0 ? (
+                          <div className="mff-navbar__notifications-state">
+                            No recent notifications.
+                          </div>
+                        ) : (
+                          (isAdopterRole ? recentNotifications : notifications).map((notification) => (
+                            <button
+                              key={notification.id}
+                              type="button"
+                              className={`mff-navbar__notification-item ${
+                                notification.read
+                                  ? ""
+                                  : "mff-navbar__notification-item--unread"
+                              }`}
+                              onClick={() => handleNotificationClick(notification)}
+                            >
+                              <div className="mff-navbar__notification-topline">
+                                <span className="mff-navbar__notification-title">
+                                  {notification.title}
+                                </span>
+                                <span className="mff-navbar__notification-time">
+                                  {formatNotificationTime(notification.created_at)}
+                                </span>
+                              </div>
+                              <div className="mff-navbar__notification-message">
+                                {notification.message}
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mff-navbar__mobile-drawer-actions">
+                      {(role === "adopter" || role === "user") && (
+                        <>
+                          <button
+                            type="button"
+                            className="mff-navbar__dropdown-item"
+                            onClick={() => handleMenuNavigate("/pet-pouch")}
+                          >
+                            Pet Pouch
+                          </button>
+                          <button
+                            type="button"
+                            className="mff-navbar__dropdown-item"
+                            onClick={() => handleMenuNavigate("/my-listing")}
+                          >
+                            My Applications
+                          </button>
+                        </>
+                      )}
+                      {(role === "rehomer" || role === "shelter_admin") && (
+                        <>
+                          <button
+                            type="button"
+                            className="mff-navbar__dropdown-item"
+                            onClick={() => handleMenuNavigate("/rehomer-dashboard")}
+                          >
+                            Dashboard
+                          </button>
+                          <button
+                            type="button"
+                            className="mff-navbar__dropdown-item"
+                            onClick={() => handleMenuNavigate("/add-pet")}
+                            disabled={!isVerifiedRehomer}
+                          >
+                            Add Pet
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="mff-navbar__mobile-drawer-logout"
+                      onClick={handleLogout}
+                    >
+                      Logout
+                    </button>
+                  </aside>
+                )}
+                {user && !isAdopterRole && (
                   <button
                     type="button"
                     className="mff-navbar__notification-button"
@@ -426,7 +656,7 @@ const Navbar = () => {
                     </span>
                     {notificationCount > 0 && (
                       <span className="mff-navbar__notification-count">
-                        {notificationCount > 99 ? "99+" : notificationCount}
+                        {visibleNotificationCount > 99 ? "99+" : visibleNotificationCount}
                       </span>
                     )}
                   </button>
@@ -450,14 +680,19 @@ const Navbar = () => {
                   ) : (
                     avatarInitial
                   )}
+                  {visibleNotificationCount > 0 && (
+                    <span className="mff-navbar__notification-count mff-navbar__notification-count--avatar">
+                      {visibleNotificationCount > 99 ? "99+" : visibleNotificationCount}
+                    </span>
+                  )}
                 </button>
 
-                {showNotifications && isPetManager && (
-                  <div className="mff-navbar__dropdown mff-navbar__dropdown--notifications">
+                {showNotifications && user && (
+                  <div className="mff-navbar__dropdown mff-navbar__dropdown--notifications mff-navbar__dropdown--anchored-notifications mff-navbar__desktop-dropdown">
                     <div className="mff-navbar__dropdown-header mff-navbar__dropdown-header--stacked">
                       <div className="mff-navbar__dropdown-name">Notifications</div>
                       <div className="mff-navbar__dropdown-email">
-                        Wishlist saves and interest from adopters
+                        {notificationSubtitle}
                       </div>
                     </div>
 
@@ -497,23 +732,29 @@ const Navbar = () => {
                 )}
 
                 {showDropdown && (
-                  <div className="mff-navbar__dropdown">
-                    <div className="mff-navbar__dropdown-header">
-                      <div className="mff-navbar__dropdown-avatar">
-                        {userData?.profile_photo_url ? (
-                          <img
-                            src={userData.profile_photo_url}
-                            alt={displayName}
-                            className="mff-navbar__dropdown-avatar-image"
-                          />
-                        ) : (
-                          avatarInitial
-                        )}
-                      </div>
-                      <div className="mff-navbar__dropdown-meta">
-                        <div className="mff-navbar__dropdown-name">{displayName}</div>
-                        <div className="mff-navbar__dropdown-email">{displayEmail}</div>
-                        {(role === "rehomer" || role === "shelter_admin") && (
+                  <div
+                    className={`mff-navbar__dropdown ${
+                      role === "adopter" || role === "user"
+                        ? "mff-navbar__dropdown--compact"
+                        : ""
+                    } mff-navbar__dropdown--anchored-avatar mff-navbar__desktop-dropdown`}
+                  >
+                    {role === "rehomer" || role === "shelter_admin" ? (
+                      <div className="mff-navbar__dropdown-header">
+                        <div className="mff-navbar__dropdown-avatar">
+                          {userData?.profile_photo_url ? (
+                            <img
+                              src={userData.profile_photo_url}
+                              alt={displayName}
+                              className="mff-navbar__dropdown-avatar-image"
+                            />
+                          ) : (
+                            avatarInitial
+                          )}
+                        </div>
+                        <div className="mff-navbar__dropdown-meta">
+                          <div className="mff-navbar__dropdown-name">{displayName}</div>
+                          <div className="mff-navbar__dropdown-email">{displayEmail}</div>
                           <span
                             className={`mff-navbar__status-badge mff-navbar__status-badge--${
                               isVerifiedRehomer
@@ -527,9 +768,11 @@ const Navbar = () => {
                           >
                             {verificationLabelMap[verificationStatus] || "Incomplete"}
                           </span>
-                        )}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="mff-navbar__dropdown-label">Quick actions</div>
+                    )}
                     {(role === "rehomer" || role === "shelter_admin") && (
                       <>
                         <button
@@ -843,6 +1086,14 @@ const styles = `
     box-shadow: 0 6px 16px rgba(214, 132, 14, 0.16);
   }
 
+  .mff-navbar__notification-count--avatar {
+    top: -6px;
+    right: -6px;
+    background: #ffae2b;
+    color: white;
+    box-shadow: 0 8px 18px rgba(245, 130, 13, 0.24);
+  }
+
   .mff-navbar__avatar-image,
   .mff-navbar__dropdown-avatar-image {
     width: 100%;
@@ -855,15 +1106,43 @@ const styles = `
     right: 0;
     top: calc(100% + 10px);
     min-width: 260px;
+    max-width: min(360px, calc(100vw - 32px));
     background: white;
     border-radius: 22px;
     box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
     padding: 12px;
     border: 1px solid rgba(255, 174, 91, 0.18);
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .mff-navbar__mobile-drawer {
+    display: none;
+  }
+
+  .mff-navbar__mobile-overlay {
+    display: none;
   }
 
   .mff-navbar__dropdown--notifications {
     width: min(360px, calc(100vw - 32px));
+  }
+
+  .mff-navbar__dropdown--compact {
+    min-width: 210px;
+    max-width: min(240px, calc(100vw - 36px));
+    padding: 10px;
+    border-radius: 20px;
+    box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
+  }
+
+  .mff-navbar__dropdown-label {
+    padding: 4px 8px 10px;
+    color: #b46a00;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .mff-navbar__dropdown-header {
@@ -952,6 +1231,20 @@ const styles = `
     color: #1f2937;
     font-weight: 600;
     cursor: pointer;
+    box-sizing: border-box;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .mff-navbar__dropdown--compact .mff-navbar__dropdown-item {
+    padding: 12px 12px;
+    border-radius: 14px;
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+
+  .mff-navbar__dropdown--compact .mff-navbar__dropdown-item + .mff-navbar__dropdown-item {
+    margin-top: 4px;
   }
 
   .mff-navbar__dropdown-item:disabled {
@@ -983,6 +1276,11 @@ const styles = `
     max-height: 360px;
     overflow-y: auto;
     padding: 4px 2px 2px;
+  }
+
+  .mff-navbar__notifications-list--drawer {
+    max-height: none;
+    padding: 0;
   }
 
   .mff-navbar__notifications-state {
@@ -1025,6 +1323,8 @@ const styles = `
     color: #2b2b2b;
     font-size: 0.88rem;
     font-weight: 800;
+    min-width: 0;
+    word-break: break-word;
   }
 
   .mff-navbar__notification-time {
@@ -1039,6 +1339,7 @@ const styles = `
     font-size: 0.82rem;
     line-height: 1.45;
     margin-top: 6px;
+    word-break: break-word;
   }
 
   @media (max-width: 980px) {
@@ -1098,6 +1399,22 @@ const styles = `
   @media (max-width: 768px) {
     body {
       padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+    }
+
+    body.mff-body--auth {
+      padding-bottom: 0 !important;
+    }
+
+    body.mff-body--sidebar-open .pl-bar,
+    body.mff-body--sidebar-open .pl-bar-inner,
+    body.mff-body--sidebar-open .pl-search,
+    body.mff-body--sidebar-open .pl-filter-btn,
+    body.mff-body--sidebar-open .pl-filter-drawer,
+    body.mff-body--sidebar-open .hp-search-wrap {
+      display: none !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
     }
 
     .mff-navbar {
@@ -1162,6 +1479,148 @@ const styles = `
 
     .mff-navbar__user {
       width: auto;
+      position: relative;
+    }
+
+    .mff-navbar__desktop-dropdown {
+      display: none !important;
+    }
+
+    .mff-navbar__mobile-overlay {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border: none;
+      background: rgba(54, 35, 4, 0.28);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      z-index: 189;
+      padding: 0;
+      margin: 0;
+    }
+
+    .mff-navbar__mobile-drawer {
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      z-index: 190;
+      right: 0;
+      left: auto;
+      min-width: 0;
+      width: min(340px, 86vw);
+      max-width: 86vw;
+      height: 100vh;
+      background: linear-gradient(180deg, #fffdf8 0%, #fff7ea 100%);
+      border-left: 1px solid rgba(255, 174, 91, 0.2);
+      border-radius: 24px 0 0 24px;
+      padding: 16px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+      box-shadow: -16px 0 36px rgba(15, 23, 42, 0.16);
+      overflow-y: auto;
+    }
+
+    .mff-navbar__mobile-drawer-header {
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 174, 91, 0.16);
+    }
+
+    .mff-navbar__mobile-drawer-profile {
+      width: 100%;
+      border: none;
+      background: transparent;
+      border-radius: 0;
+      padding: 6px 0 2px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .mff-navbar__mobile-drawer-avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #fff3c8 0%, #ffd97a 100%);
+      color: #9c5f00;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .mff-navbar__mobile-drawer-meta {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .mff-navbar__mobile-drawer-label {
+      color: #c87907;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .mff-navbar__mobile-drawer-name {
+      color: #2b2b2b;
+      font-size: 0.96rem;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+
+    .mff-navbar__mobile-drawer-email {
+      color: #7f6f5d;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
+    .mff-navbar__mobile-drawer-section {
+      padding: 16px 0 0;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .mff-navbar__mobile-drawer-section-title {
+      color: #c87907;
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0 4px 10px;
+    }
+
+    .mff-navbar__mobile-drawer-actions {
+      padding-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border-top: 1px solid rgba(255, 174, 91, 0.16);
+    }
+
+    .mff-navbar__mobile-drawer-logout {
+      width: 100%;
+      margin-top: 0;
+      border: none;
+      border-top: 1px solid rgba(255, 174, 91, 0.16);
+      background: transparent;
+      color: #c87907;
+      font-weight: 800;
+      border-radius: 0;
+      padding: 16px 4px 8px;
+      text-align: left;
+      cursor: pointer;
     }
 
     .mff-bottom-nav {
@@ -1234,6 +1693,60 @@ const styles = `
       align-items: center;
       justify-content: center;
       box-shadow: 0 6px 14px rgba(255, 138, 0, 0.24);
+    }
+
+    .mff-navbar__notification-topline {
+      gap: 8px;
+    }
+
+    .mff-navbar__notification-title {
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .mff-navbar__notification-time {
+      font-size: 0.68rem;
+    }
+
+    .mff-navbar__notification-message,
+    .mff-navbar__dropdown-email {
+      font-size: 0.76rem;
+      line-height: 1.4;
+    }
+
+    .mff-navbar__dropdown-item {
+      padding: 15px 4px;
+      border-radius: 0;
+      font-size: 0.92rem;
+      background: transparent;
+      border-bottom: 1px solid rgba(255, 174, 91, 0.16);
+    }
+
+    .mff-navbar__notification-item {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid rgba(255, 174, 91, 0.16);
+      border-radius: 0;
+      padding: 14px 4px;
+      transform: none !important;
+    }
+
+    .mff-navbar__notification-item:hover,
+    .mff-navbar__notification-item--unread {
+      background: transparent;
+      border-color: rgba(255, 174, 91, 0.16);
+    }
+
+    .mff-navbar__notifications-list {
+      max-height: none;
+      padding-bottom: 0;
+    }
+  }
+
+  @media (max-width: 380px) {
+    .mff-navbar__mobile-drawer {
+      width: min(320px, 88vw);
+      max-width: 88vw;
     }
   }
 `;

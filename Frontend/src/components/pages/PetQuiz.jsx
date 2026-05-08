@@ -23,7 +23,21 @@ const getPetImageUrl = (pet) => {
 const normalizePet = (pet) => ({
   ...pet,
   id: String(pet.id),
-  type: pet.type || pet.species || "other",
+  type: (() => {
+    const baseType = String(pet.type || pet.species || "other").trim().toLowerCase();
+    const customType = String(pet.custom_species || pet.species_label || "").trim();
+    const breedFallback = String(pet.breed || "").trim();
+
+    if (customType) {
+      return customType;
+    }
+
+    if (baseType === "other" && breedFallback) {
+      return breedFallback;
+    }
+
+    return baseType || "other";
+  })(),
   personality: Array.isArray(pet.personality)
     ? pet.personality
     : Array.isArray(pet.personality_traits)
@@ -685,9 +699,27 @@ const PetQuiz = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
+  const [countdown, setCountdown] = useState(3);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    if (started || results.length > 0) {
+      return undefined;
+    }
+
+    if (countdown <= 0) {
+      setStarted(true);
+      return undefined;
+    }
+
+    const timer = setTimeout(() => {
+      setCountdown((current) => current - 1);
+    }, 850);
+
+    return () => clearTimeout(timer);
+  }, [countdown, results.length, started]);
 
   useEffect(() => {
     const fetchAvailablePets = async () => {
@@ -771,7 +803,7 @@ const PetQuiz = () => {
     }
 
     if (currentQuestionIndex === 0) {
-      setStarted(false);
+      navigate("/pets");
       return;
     }
 
@@ -784,6 +816,7 @@ const PetQuiz = () => {
     }
 
     setStarted(false);
+    setCountdown(3);
     setCurrentQuestionIndex(0);
     setAnswers({});
     setResults([]);
@@ -835,131 +868,17 @@ const PetQuiz = () => {
 
   if (!started) {
     return (
-      <div className="max-w-6xl mx-auto mt-12 px-4">
-        <div className="relative overflow-hidden rounded-[2rem] border border-orange-100 bg-[linear-gradient(135deg,#fff5e8_0%,#ffffff_48%,#fff9f0_100%)] shadow-[0_24px_80px_rgba(214,126,14,0.12)]">
-          <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-orange-200/40 blur-3xl"></div>
-          <div className="absolute top-32 -left-12 h-44 w-44 rounded-full bg-amber-200/40 blur-3xl"></div>
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.88),transparent_24%),radial-gradient(circle_at_80%_25%,rgba(254,215,170,0.42),transparent_18%),radial-gradient(circle_at_72%_82%,rgba(253,230,138,0.26),transparent_20%)]"></div>
-          {introPetCloud.map((item) => (
-            <div
-              key={item.className}
-              className={`absolute ${item.className} hidden md:flex h-16 w-16 items-center justify-center rounded-2xl border border-white/70 bg-white/75 text-3xl shadow-[0_16px_35px_rgba(15,23,42,0.10)] backdrop-blur-sm`}
-            >
-              {item.emoji}
-            </div>
-          ))}
-          <div className="grid gap-8 md:grid-cols-[1.15fr_0.85fr] items-center p-6 md:p-10 relative z-10">
-            <div className="relative">
-              <span className="inline-block px-4 py-2 rounded-full bg-white/85 text-orange-700 text-sm font-semibold mb-4 shadow-sm border border-orange-100">
-                Better matches, fewer guesses
-              </span>
-              <h2 className="text-4xl md:text-5xl lg:text-6xl font-black text-orange-500 mb-4 leading-[0.98]">
-                Find a pet match that feels made for real life.
-              </h2>
-              <p className="text-gray-700 leading-8 mb-5 text-[1.02rem] max-w-2xl">
-                This quiz blends fun personality cues with real adoption lifestyle
-                fit. It looks at your living space, routine, experience, activity
-                level, family setup, and care comfort so your top matches feel more
-                realistic for everyday life.
-              </p>
-              <div className="flex flex-wrap gap-3 mb-6">
-                {quizHighlights.map((highlight) => (
-                  <span
-                    key={highlight}
-                    className="rounded-full border border-orange-200 bg-white/80 px-4 py-2 text-sm font-medium text-gray-700 shadow-sm"
-                  >
-                    {highlight}
-                  </span>
-                ))}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 mb-6">
-                <div className="rounded-[1.6rem] bg-white/90 p-4 border border-orange-100 shadow-sm">
-                  <h3 className="font-semibold text-orange-700 mb-1">What it considers</h3>
-                  <p className="text-sm text-gray-600">
-                    Personality, care needs, space, activity, beginner-friendliness, and home fit.
-                  </p>
-                </div>
-                <div className="rounded-[1.6rem] bg-white/90 p-4 border border-orange-100 shadow-sm">
-                  <h3 className="font-semibold text-orange-700 mb-1">What you get</h3>
-                  <p className="text-sm text-gray-600">
-                    Top 3 matches, clear reasons, and practical care notes for each pet.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => setStarted(true)}
-                  className="px-6 py-3 bg-orange-500 text-white rounded-full font-semibold hover:bg-orange-600 shadow-[0_14px_34px_rgba(249,115,22,0.28)]"
-                >
-                  Start Quiz
-                </button>
-                <button
-                  onClick={() => navigate("/pets")}
-                  className="px-6 py-3 border border-orange-300 text-orange-600 rounded-full font-semibold hover:bg-orange-50 bg-white/80"
-                >
-                  Browse Pets Instead
-                </button>
-              </div>
-              <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[1.5rem] border border-white/70 bg-white/75 px-4 py-4 shadow-sm backdrop-blur-sm">
-                  <div className="text-2xl mb-2">{decorativePets[0].emoji}</div>
-                  <p className="text-sm font-semibold text-gray-800">Lifestyle fit first</p>
-                  <p className="text-xs text-gray-600 mt-1">
-                    More than vibes, it looks at real daily care and space needs.
-                  </p>
-                </div>
-                <div className="rounded-[1.5rem] border border-white/70 bg-white/75 px-4 py-4 shadow-sm backdrop-blur-sm">
-                  <div className="text-2xl mb-2">{decorativePets[1].emoji}</div>
-                  <p className="text-sm font-semibold text-gray-800">Warm, practical results</p>
-                  <p className="text-xs text-gray-600 mt-1">
-                    You get reasons, traits, and questions to ask before applying.
-                  </p>
-                </div>
-                <div className="rounded-[1.5rem] border border-white/70 bg-white/75 px-4 py-4 shadow-sm backdrop-blur-sm">
-                  <div className="text-2xl mb-2">{decorativePets[2].emoji}</div>
-                  <p className="text-sm font-semibold text-gray-800">Built for real homes</p>
-                  <p className="text-xs text-gray-600 mt-1">
-                    Helpful whether you live in an apartment, family home, or cozy space.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              <div className="relative overflow-hidden bg-white/90 rounded-[1.75rem] p-5 border border-orange-100 shadow-lg">
-                <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-r from-orange-100/70 via-amber-100/50 to-transparent"></div>
-                <div className="relative">
-                  <h3 className="text-lg font-semibold text-orange-700 mb-4">You&apos;ll answer questions about:</h3>
-                  <div className="grid gap-3 text-sm text-gray-700">
-                    <div className="rounded-xl bg-orange-50 p-3 border border-orange-100">Living space and daily routine</div>
-                    <div className="rounded-xl bg-orange-50 p-3 border border-orange-100">Experience, children, and other pets</div>
-                    <div className="rounded-xl bg-orange-50 p-3 border border-orange-100">Activity level, grooming, and care comfort</div>
-                    <div className="rounded-xl bg-orange-50 p-3 border border-orange-100">Affection style and patient adjustment time</div>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {decorativePets.map((petGraphic) => (
-                  <div
-                    key={petGraphic.label}
-                    className={`rounded-[1.5rem] bg-gradient-to-br ${petGraphic.accent} p-4 border border-white/70 shadow-sm text-center transition-transform duration-300 hover:-translate-y-1`}
-                  >
-                    <div className="text-3xl mb-2">{petGraphic.emoji}</div>
-                    <div className="text-xs font-semibold text-gray-700">{petGraphic.label}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="rounded-[1.5rem] border border-orange-100 bg-[#fffaf3] p-4 shadow-sm">
-                <p className="text-xs uppercase tracking-[0.18em] text-orange-600 font-semibold mb-2">
-                  Match preview
-                </p>
-                <p className="text-sm text-gray-700 leading-6">
-                  Your answers turn into a care profile, then we compare that against each pet&apos;s
-                  energy, home fit, friendliness, and lifestyle needs.
-                </p>
-              </div>
-            </div>
+      <div className="min-h-[78vh] flex items-center justify-center px-4 bg-[radial-gradient(circle_at_top,_rgba(255,215,150,0.24),_transparent_42%),linear-gradient(180deg,#fff8ee_0%,#ffffff_100%)]">
+        <div className="w-full max-w-sm rounded-[2rem] border border-orange-100 bg-white px-6 py-10 text-center shadow-[0_24px_80px_rgba(214,126,14,0.10)]">
+          <p className="text-xs uppercase tracking-[0.22em] text-orange-600 font-semibold mb-3">
+            Pet Match Quiz
+          </p>
+          <div className="text-6xl font-black text-orange-500 leading-none">
+            {countdown > 0 ? countdown : 1}
           </div>
+          <p className="mt-4 text-sm text-gray-600">
+            Your first question is about to appear.
+          </p>
         </div>
       </div>
     );
@@ -999,6 +918,36 @@ const PetQuiz = () => {
                 Restart Quiz
               </button>
             </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              {
+                step: "1",
+                title: "Open the pet details",
+                copy: "Check the pet's story, care needs, and health notes before deciding.",
+              },
+              {
+                step: "2",
+                title: "Chat with the rehomer",
+                copy: "Ask about feeding, personality, routines, and anything else you need to know.",
+              },
+              {
+                step: "3",
+                title: "Send your request",
+                copy: "Share your visit plan and home setup when you feel ready to move forward.",
+              },
+            ].map((item) => (
+              <div
+                key={item.step}
+                className="rounded-[1.4rem] border border-orange-100 bg-white/90 px-4 py-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]"
+              >
+                <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-sm font-black text-orange-700">
+                  {item.step}
+                </div>
+                <h3 className="text-base font-extrabold text-[#2c1700]">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-600">{item.copy}</p>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1106,12 +1055,6 @@ const PetQuiz = () => {
                     >
                       View Pet Details
                     </button>
-                    <button
-                      onClick={() => navigate(`/pet/${pet.id}`)}
-                      className="px-5 py-3 rounded-full border border-orange-300 text-orange-600 hover:bg-orange-50 font-semibold bg-white"
-                    >
-                      Learn More Before Applying
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1123,38 +1066,14 @@ const PetQuiz = () => {
   }
 
   return (
-    <div className="max-w-5xl mx-auto mt-12 px-4">
-      <div className="relative overflow-hidden rounded-[2rem] border border-orange-100 bg-[linear-gradient(135deg,#fff6ea_0%,#ffffff_46%,#fffaf3_100%)] p-6 md:p-8 shadow-[0_24px_80px_rgba(214,126,14,0.10)]">
-        <div className="absolute -top-14 right-8 text-6xl opacity-15">{decorativePets[3].emoji}</div>
-        <div className="absolute bottom-6 left-6 text-5xl opacity-10">{decorativePets[2].emoji}</div>
-        <div className="absolute top-28 right-24 text-5xl opacity-10">{decorativePets[1].emoji}</div>
-        <div className="absolute bottom-16 right-10 text-5xl opacity-10">{decorativePets[0].emoji}</div>
-      <div className="mb-6 relative z-10">
-        <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-orange-600 font-semibold mb-2">
-              Guided Matching Flow
-            </p>
-            <h2 className="text-2xl md:text-3xl font-black text-orange-500">Pet Match Quiz</h2>
-          </div>
+    <div className="max-w-3xl mx-auto mt-4 px-3 pb-24">
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-orange-100 bg-[linear-gradient(135deg,#fff6ea_0%,#ffffff_46%,#fffaf3_100%)] p-4 shadow-[0_18px_48px_rgba(214,126,14,0.10)]">
+      <div className="mb-4 relative z-10">
+        <div className="flex justify-between items-center gap-3 mb-2">
           <span className="rounded-full bg-white/85 px-4 py-2 text-sm text-gray-600 border border-orange-100 shadow-sm">
             Question {currentQuestionIndex + 1} of {quizQuestions.length}
           </span>
-        </div>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {decorativePets.slice(0, 5).map((petGraphic) => (
-            <span
-              key={petGraphic.label}
-              className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/75 px-3 py-2 text-xs font-medium text-gray-700 shadow-sm"
-            >
-              <span className="text-base">{petGraphic.emoji}</span>
-              {petGraphic.label}
-            </span>
-          ))}
-        </div>
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-medium text-gray-600">Your progress</span>
-          <span className="text-sm text-gray-500">{Math.round(progressPercentage)}% complete</span>
+          <span className="text-sm text-gray-500">{Math.round(progressPercentage)}%</span>
         </div>
         <div
           className="w-full bg-gray-200 rounded-full h-3 overflow-hidden"
@@ -1171,15 +1090,11 @@ const PetQuiz = () => {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_260px] items-start">
-        <div className="rounded-[1.75rem] bg-white/85 border border-orange-100 p-6 shadow-sm backdrop-blur-sm relative overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-r from-orange-100/60 via-amber-100/40 to-transparent"></div>
+      <div className="grid gap-4 items-start">
+        <div className="rounded-[1.5rem] bg-white/90 border border-orange-100 p-4 shadow-sm backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-r from-orange-100/60 via-amber-100/40 to-transparent"></div>
           <div className="relative">
-            <div className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-white/80 px-3 py-2 text-xs uppercase tracking-[0.18em] text-orange-600 font-semibold mb-4 shadow-sm">
-              <span className="text-sm">{decorativePets[currentQuestionIndex % decorativePets.length].emoji}</span>
-              {toTitleCase(currentQuestion.category)}
-            </div>
-            <h3 className="text-xl md:text-3xl font-semibold text-orange-700 mb-5 leading-tight">
+            <h3 className="text-[1.35rem] md:text-[1.6rem] font-semibold text-orange-700 mb-5 leading-tight pt-2">
               {currentQuestion.question}
             </h3>
             <div className="grid gap-3">
@@ -1207,34 +1122,6 @@ const PetQuiz = () => {
             </div>
           </div>
         </div>
-
-        <div className="rounded-[1.75rem] border border-orange-100 bg-white/90 p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.18em] text-orange-600 font-semibold mb-3">
-            Match Moodboard
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            {decorativePets.slice(0, 4).map((petGraphic) => (
-              <div
-                key={petGraphic.label}
-                className={`rounded-2xl bg-gradient-to-br ${petGraphic.accent} p-3 text-center border border-white`}
-              >
-                <div className="text-3xl mb-1">{petGraphic.emoji}</div>
-                <div className="text-[11px] font-semibold text-gray-700 leading-snug">
-                  {petGraphic.label}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
-            <p className="text-sm font-semibold text-orange-700 mb-1">What we&apos;re weighing</p>
-            <p className="text-xs text-gray-600 leading-5">
-              Personality, space, activity, care comfort, and real home compatibility.
-            </p>
-          </div>
-          <p className="text-xs text-gray-600 mt-4 leading-5">
-            Each answer shapes your adoption fit using personality, care needs, home setup, and companion style.
-          </p>
-        </div>
       </div>
 
       <div className="flex flex-wrap justify-between gap-3 relative z-10">
@@ -1242,7 +1129,7 @@ const PetQuiz = () => {
           onClick={handleBack}
           className="px-6 py-3 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 bg-white mt-6"
         >
-          {currentQuestionIndex === 0 ? "Back to Intro" : "Back"}
+          Back
         </button>
         <div className="flex flex-wrap gap-3 mt-6">
           <button

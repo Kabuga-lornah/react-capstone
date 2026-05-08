@@ -1,0 +1,81 @@
+.rw-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgba(255, 180, 50, 0.2);
+  display: flex;
+  padding: 10px 0 max(14px, env(safe-area-inset-bottom));
+  backdrop-filter: blur(12px);
+  z-index: 100;
+}
+
+.rw-nav__item {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: "Nunito", sans-serif;
+  padding: 0;
+  min-height: 48px;
+  color: #c0a070;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+.rw-nav__item svg {
+  width: 18px;
+  height: 18px;
+}
+
+.rw-nav__icon {
+  line-height: 1;
+}
+
+.rw-nav__label {
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.rw-nav__item.is-active {
+  color: #9c5f00;
+  background: transparent;
+}
+
+.rw-nav__item:focus,
+.rw-nav__item:focus-visible {
+  background: transparent;
+  outline: none;
+}
+
+.rw-nav__item.is-active .rw-nav__label {
+  color: #9c5f00;
+}
+
+.rw-nav__badge {
+  position: absolute;
+  top: 2px;
+  right: 14px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ff8a00;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 14px rgba(255, 138, 0, 0.24);
+}

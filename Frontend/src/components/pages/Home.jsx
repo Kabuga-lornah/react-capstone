@@ -93,7 +93,21 @@ const getPetImageUrl = (pet) => {
 const normalizePet = (pet) => ({
   ...pet,
   id: String(pet.id),
-  type: pet.type || pet.species || "other",
+  type: (() => {
+    const baseType = String(pet.type || pet.species || "other").trim().toLowerCase();
+    const customType = String(pet.custom_species || pet.species_label || "").trim();
+    const breedFallback = String(pet.breed || "").trim();
+
+    if (customType) {
+      return customType;
+    }
+
+    if (baseType === "other" && breedFallback) {
+      return breedFallback;
+    }
+
+    return baseType || "other";
+  })(),
   personality: Array.isArray(pet.personality)
     ? pet.personality
     : Array.isArray(pet.personality_traits)
@@ -118,7 +132,7 @@ const getPetCategory = (pet) => {
   return "Other";
 };
 
-const getPetBreedLabel = (pet) => pet.breed || pet.type || pet.species || "Pet";
+const getPetBreedLabel = (pet) => pet.breed || pet.type || pet.species_label || pet.species || "Pet";
 
 const getPetTraits = (pet) => {
   const traits = (pet.personality || []).slice(0, 3);

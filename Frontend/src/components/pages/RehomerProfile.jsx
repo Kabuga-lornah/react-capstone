@@ -6,6 +6,7 @@ import {
   updateCurrentUser,
 } from "../../services/api";
 import { useAuth } from "./AuthContext";
+import RehomerWorkspaceNav from "./RehomerWorkspaceNav";
 import "./RehomerProfile.css";
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
@@ -54,6 +55,8 @@ const fileToFieldMap = {
   idBack: "id_back_url",
 };
 
+const isLockedStatus = (status) => status === "pending" || status === "verified";
+
 const RehomerProfile = () => {
   const navigate = useNavigate();
   const { userData, setAuthenticatedUser } = useAuth();
@@ -74,11 +77,24 @@ const RehomerProfile = () => {
 
   const verificationStatus = userData?.rehomer_verification_status || "incomplete";
   const statusUi = statusConfig[verificationStatus] || statusConfig.incomplete;
+  const isReviewLocked = isLockedStatus(verificationStatus);
 
   const welcomeName = useMemo(() => {
     const fullName = `${userData?.first_name || ""} ${userData?.last_name || ""}`.trim();
     return fullName || userData?.username || userData?.email || "Rehomer";
   }, [userData]);
+
+  const missingRequiredFields = useMemo(() => {
+    const missing = [];
+    if (!formData.first_name.trim()) missing.push("first name");
+    if (!formData.last_name.trim()) missing.push("last name");
+    if (!formData.email.trim()) missing.push("email");
+    if (!formData.phone_number.trim()) missing.push("phone number");
+    if (!formData.profile_photo_url) missing.push("profile photo");
+    if (!formData.id_front_url) missing.push("ID front");
+    if (!formData.id_back_url) missing.push("ID back");
+    return missing;
+  }, [formData]);
 
   const syncProfile = async () => {
     const refreshedProfile = await getCurrentUser();
@@ -105,23 +121,11 @@ const RehomerProfile = () => {
     }));
   };
 
-  const handleSaveProfile = async (event) => {
-    event.preventDefault();
-
-    try {
-      setSaving(true);
-      setMessage({ type: "", text: "" });
-      const updatedProfile = await updateCurrentUser(formData);
-      setAuthenticatedUser(updatedProfile);
-      setMessage({ type: "success", text: "Profile updated successfully." });
-    } catch (error) {
-      setMessage({ type: "error", text: error.message || "Failed to update profile." });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleFileUpload = async (event, fileKey) => {
+    if (isReviewLocked) {
+      return;
+    }
+
     const file = event.target.files?.[0];
     event.target.value = "";
 
@@ -159,9 +163,29 @@ const RehomerProfile = () => {
   };
 
   const handleSubmitVerification = async () => {
+    if (isReviewLocked) {
+      return;
+    }
+
+    if (missingRequiredFields.length > 0) {
+      setMessage({
+        type: "error",
+        text: `Please add your ${missingRequiredFields.join(", ")} before submitting.`,
+      });
+      return;
+    }
+
     try {
+      setSaving(true);
       setSubmittingVerification(true);
       setMessage({ type: "", text: "" });
+      await updateCurrentUser({
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        email: formData.email,
+        phone_number: formData.phone_number,
+        bio: formData.bio,
+      });
       await submitRehomerVerification({
         phone_number: formData.phone_number,
         profile_photo_url: formData.profile_photo_url,
@@ -169,9 +193,12 @@ const RehomerProfile = () => {
         id_back_url: formData.id_back_url,
       });
       await syncProfile();
-      setMessage({
-        type: "success",
-        text: "Verification submitted. You can list pets once approved.",
+      navigate("/rehomer-dashboard", {
+        replace: true,
+        state: {
+          successMessage:
+            "Verification submitted. Please come back in 1 to 2 days to check whether your rehomer profile has been approved.",
+        },
       });
     } catch (error) {
       setMessage({
@@ -179,6 +206,7 @@ const RehomerProfile = () => {
         text: error.message || "Failed to submit verification.",
       });
     } finally {
+      setSaving(false);
       setSubmittingVerification(false);
     }
   };
@@ -190,7 +218,7 @@ const RehomerProfile = () => {
           <div>
             <span className="rehomer-profile-badge">Rehomer Profile</span>
             <h1>{welcomeName}</h1>
-            <p>Keep your contact details current and submit your rehomer verification so you can list pets safely.</p>
+            <p>Complete your private verification details so your listing access can be reviewed safely.</p>
           </div>
           <div className={`rehomer-profile-status ${statusUi.className}`}>
             {statusUi.label}
@@ -204,33 +232,57 @@ const RehomerProfile = () => {
         ) : null}
 
         <div className="rehomer-profile-layout">
-          <form className="rehomer-profile-card" onSubmit={handleSaveProfile}>
+          <section className="rehomer-profile-card">
             <div className="rehomer-profile-card__header">
               <span className="rehomer-profile-card__eyebrow">Profile Details</span>
               <h2>Contact and identity details</h2>
-              <p>These details are only visible to you and admins for verification review.</p>
+              <p>
+                These details are only visible to you and admins for verification review.
+                {isReviewLocked ? " This profile is locked while review is in progress." : ""}
+              </p>
             </div>
 
             <div className="rehomer-profile-grid">
               <label className="rehomer-profile-field">
-                <span>First name</span>
-                <input name="first_name" value={formData.first_name} onChange={handleChange} />
+                <span>First name <em>*</em></span>
+                <input
+                  name="first_name"
+                  value={formData.first_name}
+                  onChange={handleChange}
+                  readOnly={isReviewLocked}
+                  disabled={isReviewLocked}
+                />
               </label>
               <label className="rehomer-profile-field">
-                <span>Last name</span>
-                <input name="last_name" value={formData.last_name} onChange={handleChange} />
+                <span>Last name <em>*</em></span>
+                <input
+                  name="last_name"
+                  value={formData.last_name}
+                  onChange={handleChange}
+                  readOnly={isReviewLocked}
+                  disabled={isReviewLocked}
+                />
               </label>
               <label className="rehomer-profile-field">
-                <span>Email</span>
-                <input name="email" value={formData.email} onChange={handleChange} type="email" />
+                <span>Email <em>*</em></span>
+                <input
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  type="email"
+                  readOnly={isReviewLocked}
+                  disabled={isReviewLocked}
+                />
               </label>
               <label className="rehomer-profile-field">
-                <span>Phone number</span>
+                <span>Phone number <em>*</em></span>
                 <input
                   name="phone_number"
                   value={formData.phone_number}
                   onChange={handleChange}
                   placeholder="For example, +2547..."
+                  readOnly={isReviewLocked}
+                  disabled={isReviewLocked}
                 />
               </label>
               <label className="rehomer-profile-field rehomer-profile-field--wide">
@@ -241,23 +293,12 @@ const RehomerProfile = () => {
                   onChange={handleChange}
                   rows={4}
                   placeholder="Introduce yourself briefly and explain your role."
+                  readOnly={isReviewLocked}
+                  disabled={isReviewLocked}
                 />
               </label>
             </div>
-
-            <div className="rehomer-profile-actions">
-              <button type="submit" className="rehomer-profile-button rehomer-profile-button--primary" disabled={saving}>
-                {saving ? "Saving..." : "Save Profile"}
-              </button>
-              <button
-                type="button"
-                className="rehomer-profile-button rehomer-profile-button--secondary"
-                onClick={() => navigate("/rehomer-dashboard")}
-              >
-                Back to Dashboard
-              </button>
-            </div>
-          </form>
+          </section>
 
           <div className="rehomer-profile-side">
             <section className="rehomer-profile-card">
@@ -270,44 +311,56 @@ const RehomerProfile = () => {
               <div className="rehomer-profile-upload-list">
                 <div className="rehomer-profile-upload">
                   <div>
-                    <strong>Profile photo</strong>
-                    <p>Optional, but helpful for a complete profile.</p>
+                    <strong>Profile photo *</strong>
+                    <p>Required for identity review.</p>
                   </div>
                   {formData.profile_photo_url ? (
                     <img src={formData.profile_photo_url} alt="Profile preview" className="rehomer-profile-upload__image" />
                   ) : null}
-                  <label className="rehomer-profile-upload__button">
-                    <input type="file" accept="image/*" onChange={(event) => handleFileUpload(event, "profilePhoto")} />
-                    {uploadingField === "profilePhoto" ? "Uploading..." : "Upload profile photo"}
-                  </label>
+                  {isReviewLocked ? (
+                    <div className="rehomer-profile-upload__locked">Locked while review is in progress.</div>
+                  ) : (
+                    <label className="rehomer-profile-upload__button">
+                      <input type="file" accept="image/*" onChange={(event) => handleFileUpload(event, "profilePhoto")} />
+                      {uploadingField === "profilePhoto" ? "Uploading..." : "Upload profile photo"}
+                    </label>
+                  )}
                 </div>
 
                 <div className="rehomer-profile-upload">
                   <div>
-                    <strong>ID front</strong>
+                    <strong>ID front *</strong>
                     <p>Required before verification can be submitted.</p>
                   </div>
                   {formData.id_front_url ? (
                     <img src={formData.id_front_url} alt="ID front preview" className="rehomer-profile-upload__image" />
                   ) : null}
-                  <label className="rehomer-profile-upload__button">
-                    <input type="file" accept="image/*" onChange={(event) => handleFileUpload(event, "idFront")} />
-                    {uploadingField === "idFront" ? "Uploading..." : "Upload ID front"}
-                  </label>
+                  {isReviewLocked ? (
+                    <div className="rehomer-profile-upload__locked">Locked while review is in progress.</div>
+                  ) : (
+                    <label className="rehomer-profile-upload__button">
+                      <input type="file" accept="image/*" onChange={(event) => handleFileUpload(event, "idFront")} />
+                      {uploadingField === "idFront" ? "Uploading..." : "Upload ID front"}
+                    </label>
+                  )}
                 </div>
 
                 <div className="rehomer-profile-upload">
                   <div>
-                    <strong>ID back</strong>
+                    <strong>ID back *</strong>
                     <p>Required before verification can be submitted.</p>
                   </div>
                   {formData.id_back_url ? (
                     <img src={formData.id_back_url} alt="ID back preview" className="rehomer-profile-upload__image" />
                   ) : null}
-                  <label className="rehomer-profile-upload__button">
-                    <input type="file" accept="image/*" onChange={(event) => handleFileUpload(event, "idBack")} />
-                    {uploadingField === "idBack" ? "Uploading..." : "Upload ID back"}
-                  </label>
+                  {isReviewLocked ? (
+                    <div className="rehomer-profile-upload__locked">Locked while review is in progress.</div>
+                  ) : (
+                    <label className="rehomer-profile-upload__button">
+                      <input type="file" accept="image/*" onChange={(event) => handleFileUpload(event, "idBack")} />
+                      {uploadingField === "idBack" ? "Uploading..." : "Upload ID back"}
+                    </label>
+                  )}
                 </div>
               </div>
             </section>
@@ -316,11 +369,15 @@ const RehomerProfile = () => {
               <div className="rehomer-profile-card__header">
                 <span className="rehomer-profile-card__eyebrow">Verification</span>
                 <h2>Submit for review</h2>
-                <p>For MVP testing, an admin can review your documents in Django admin and mark you verified or rejected.</p>
+                <p>
+                  Submit once and wait for admin review. While your status is pending review or verified,
+                  this profile stays locked.
+                </p>
               </div>
 
               <div className="rehomer-profile-checklist">
                 <div>Phone number: {formData.phone_number ? "Added" : "Missing"}</div>
+                <div>Profile photo: {formData.profile_photo_url ? "Added" : "Missing"}</div>
                 <div>ID front: {formData.id_front_url ? "Added" : "Missing"}</div>
                 <div>ID back: {formData.id_back_url ? "Added" : "Missing"}</div>
               </div>
@@ -329,9 +386,15 @@ const RehomerProfile = () => {
                 type="button"
                 className="rehomer-profile-button rehomer-profile-button--primary"
                 onClick={handleSubmitVerification}
-                disabled={submittingVerification}
+                disabled={submittingVerification || saving || isReviewLocked}
               >
-                {submittingVerification ? "Submitting..." : "Submit Verification"}
+                {verificationStatus === "verified"
+                  ? "Verified"
+                  : verificationStatus === "pending"
+                    ? "Pending Review"
+                    : submittingVerification || saving
+                      ? "Submitting..."
+                      : "Submit Verification"}
               </button>
 
               {userData?.rehomer_verification_notes ? (
@@ -344,6 +407,8 @@ const RehomerProfile = () => {
           </div>
         </div>
       </div>
+
+      <RehomerWorkspaceNav />
     </div>
   );
 };

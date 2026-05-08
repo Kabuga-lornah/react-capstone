@@ -32,6 +32,7 @@ class CustomUser(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ADOPTER)
     phone_number = models.CharField(max_length=30, blank=True)
     bio = models.TextField(blank=True)
+    community_alias = models.CharField(max_length=30, unique=True, null=True, blank=True)
     profile_photo_url = models.URLField(blank=True)
     id_front_url = models.URLField(blank=True)
     id_back_url = models.URLField(blank=True)
@@ -173,6 +174,7 @@ class Pet(models.Model):
 
     name = models.CharField(max_length=150)
     species = models.CharField(max_length=50, choices=SPECIES_CHOICES, default=OTHER)
+    custom_species = models.CharField(max_length=100, blank=True)
     breed = models.CharField(max_length=150, blank=True)
     age = models.CharField(max_length=50, blank=True)
     gender = models.CharField(max_length=20, blank=True)
@@ -193,6 +195,9 @@ class Pet(models.Model):
     is_vaccinated = models.BooleanField(default=False)
     is_dewormed = models.BooleanField(default=False)
     is_neutered = models.BooleanField(default=False)
+    vaccination_proof_url = models.URLField(blank=True)
+    deworming_proof_url = models.URLField(blank=True)
+    neutering_proof_url = models.URLField(blank=True)
     adoption_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=AVAILABLE)
     owner = models.ForeignKey(
@@ -250,6 +255,34 @@ class AdoptionApplication(models.Model):
         (OTHER_HOUSING, 'Other'),
     ]
 
+    REHOMER_HOME = 'rehomer_home'
+    ADOPTER_HOME = 'adopter_home'
+    NEUTRAL_PLACE = 'neutral_place'
+
+    MEETING_PREFERENCE_CHOICES = [
+        (REHOMER_HOME, 'Visit the rehomer / pet location'),
+        (ADOPTER_HOME, 'Rehomer visits my place'),
+        (NEUTRAL_PLACE, 'Meet at a neutral place'),
+    ]
+
+    VISIT_NOT_STARTED = 'not_started'
+    VISIT_PROPOSED = 'proposed'
+    VISIT_AGREED = 'agreed'
+
+    VISIT_STATUS_CHOICES = [
+        (VISIT_NOT_STARTED, 'Not Started'),
+        (VISIT_PROPOSED, 'Proposed'),
+        (VISIT_AGREED, 'Agreed'),
+    ]
+
+    VISIT_PROPOSED_BY_ADOPTER = 'adopter'
+    VISIT_PROPOSED_BY_REHOMER = 'rehomer'
+
+    VISIT_PROPOSED_BY_CHOICES = [
+        (VISIT_PROPOSED_BY_ADOPTER, 'Adopter'),
+        (VISIT_PROPOSED_BY_REHOMER, 'Rehomer'),
+    ]
+
     pet = models.ForeignKey(Pet, on_delete=models.CASCADE, related_name='applications')
     applicant = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -263,6 +296,11 @@ class AdoptionApplication(models.Model):
     pet_experience = models.TextField(blank=True)
     can_afford_vet_care = models.BooleanField(default=False)
     preferred_visit_date = models.DateField(null=True, blank=True)
+    meeting_preference = models.CharField(max_length=30, choices=MEETING_PREFERENCE_CHOICES, blank=True)
+    meeting_location_notes = models.TextField(blank=True)
+    visit_status = models.CharField(max_length=20, choices=VISIT_STATUS_CHOICES, default=VISIT_NOT_STARTED)
+    visit_proposed_by = models.CharField(max_length=20, choices=VISIT_PROPOSED_BY_CHOICES, blank=True)
+    visit_confirmed_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -299,9 +337,21 @@ class PetWishlist(models.Model):
 
 class Notification(models.Model):
     WISHLIST_SAVED = 'wishlist_saved'
+    CHAT_MESSAGE = 'chat_message'
+    APPLICATION_SUBMITTED = 'application_submitted'
+    APPLICATION_APPROVED = 'application_approved'
+    APPLICATION_REJECTED = 'application_rejected'
+    VISIT_PROPOSED = 'visit_proposed'
+    VISIT_AGREED = 'visit_agreed'
 
     TYPE_CHOICES = [
         (WISHLIST_SAVED, 'Wishlist Saved'),
+        (CHAT_MESSAGE, 'Chat Message'),
+        (APPLICATION_SUBMITTED, 'Application Submitted'),
+        (APPLICATION_APPROVED, 'Application Approved'),
+        (APPLICATION_REJECTED, 'Application Rejected'),
+        (VISIT_PROPOSED, 'Visit Proposed'),
+        (VISIT_AGREED, 'Visit Agreed'),
     ]
 
     recipient = models.ForeignKey(
@@ -319,6 +369,20 @@ class Notification(models.Model):
         on_delete=models.CASCADE,
         related_name='notifications',
     )
+    application = models.ForeignKey(
+        AdoptionApplication,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='notifications',
+    )
+    conversation = models.ForeignKey(
+        'Conversation',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='notifications',
+    )
     type = models.CharField(max_length=50, choices=TYPE_CHOICES)
     title = models.CharField(max_length=255)
     message = models.TextField()
@@ -330,3 +394,173 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.title} -> {self.recipient}"
+
+
+class Conversation(models.Model):
+    pet = models.ForeignKey(
+        Pet,
+        on_delete=models.CASCADE,
+        related_name='conversations',
+    )
+    adopter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='adopter_conversations',
+    )
+    rehomer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='rehomer_conversations',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['pet', 'adopter', 'rehomer'],
+                name='unique_pet_adopter_rehomer_conversation',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Chat about {self.pet} ({self.adopter} <> {self.rehomer})"
+
+
+class ConversationMessage(models.Model):
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='messages',
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='conversation_messages',
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Message #{self.pk} in conversation #{self.conversation_id}"
+
+
+class CommunityPost(models.Model):
+    GENERAL = 'general'
+    DOGS = 'dogs'
+    CATS = 'cats'
+    HEALTH = 'health'
+    VETS = 'vets'
+    FUN = 'fun'
+
+    CATEGORY_CHOICES = [
+        (GENERAL, 'General'),
+        (DOGS, 'Dogs'),
+        (CATS, 'Cats'),
+        (HEALTH, 'Health'),
+        (VETS, 'Vets'),
+        (FUN, 'Fun'),
+    ]
+
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='community_posts',
+    )
+    body = models.TextField(blank=True)
+    image_url = models.URLField(blank=True)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=GENERAL)
+    repost_of = models.ForeignKey(
+        'self',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='reposts',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.author} community post #{self.pk}"
+
+
+class CommunityComment(models.Model):
+    post = models.ForeignKey(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name='comments',
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='community_comments',
+    )
+    body = models.TextField(blank=True)
+    image_url = models.URLField(blank=True)
+    video_url = models.URLField(blank=True)
+    sticker = models.CharField(max_length=32, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Comment #{self.pk} on post #{self.post_id}"
+
+
+class CommunityReaction(models.Model):
+    LIKE = 'like'
+    DISLIKE = 'dislike'
+
+    VALUE_CHOICES = [
+        (LIKE, 'Like'),
+        (DISLIKE, 'Dislike'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='community_reactions',
+    )
+    post = models.ForeignKey(
+        CommunityPost,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='reactions',
+    )
+    comment = models.ForeignKey(
+        CommunityComment,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='reactions',
+    )
+    value = models.CharField(max_length=10, choices=VALUE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'post'],
+                name='unique_user_community_post_reaction',
+            ),
+            models.UniqueConstraint(
+                fields=['user', 'comment'],
+                name='unique_user_community_comment_reaction',
+            ),
+        ]
+
+    def __str__(self):
+        target = f"post #{self.post_id}" if self.post_id else f"comment #{self.comment_id}"
+        return f"{self.user} {self.value}d {target}"

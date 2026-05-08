@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   addToWishlist,
@@ -7,10 +7,12 @@ import {
   getPetDetail,
   listMyApplications,
   listWishlist,
+  startConversation,
   updatePet,
 } from "../../services/api";
 import { useAuth } from "./AuthContext";
 import { PetPouchContext } from "./PetPouchContext";
+import RehomerWorkspaceNav from "./RehomerWorkspaceNav";
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
@@ -62,9 +64,25 @@ const getListedBy = (pet) => {
   return pet.owner?.username || pet.rehomerName || "Unknown";
 };
 
+const resolvePetType = (pet) => {
+  const baseType = String(pet.type || pet.species || "other").trim().toLowerCase();
+  const customType = String(pet.custom_species || pet.species_label || "").trim();
+  const breedFallback = String(pet.breed || "").trim();
+
+  if (customType) {
+    return customType;
+  }
+
+  if (baseType === "other" && breedFallback) {
+    return breedFallback;
+  }
+
+  return baseType || "other";
+};
+
 const normalizePet = (pet) => ({
   ...pet,
-  type: pet.type || pet.species || "other",
+  type: resolvePetType(pet),
   personality: Array.isArray(pet.personality)
     ? pet.personality
     : Array.isArray(pet.personality_traits)
@@ -98,9 +116,31 @@ const formatCompatibilityValue = (value) => {
   return toTitleCase(String(value).replaceAll("_", " "));
 };
 
+const meetingPreferenceOptions = [
+  { value: "rehomer_home", label: "Visit the rehomer or pet location" },
+  { value: "adopter_home", label: "Ask the rehomer to visit my place" },
+  { value: "neutral_place", label: "Meet at a neutral place" },
+];
+
+const housingOptions = [
+  { value: "", label: "Select your home setup" },
+  { value: "house", label: "House" },
+  { value: "apartment", label: "Apartment" },
+  { value: "other", label: "Other" },
+];
+
 const getPresenceLabel = (owner) => {
   if (owner?.is_online) {
     return "Online now";
+  }
+
+  if (owner?.last_seen) {
+    return `Last active ${new Date(owner.last_seen).toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })}`;
   }
 
   if (owner?.activity_status === "recently_active") {
@@ -556,6 +596,23 @@ const pageStyles = `
     line-height: 1.6;
   }
 
+  .pd-floating-chat {
+    position: fixed;
+    right: 16px;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    z-index: 150;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #f59e0b 0%, #ffb739 100%);
+    color: #fff;
+    padding: 14px 18px;
+    font-size: 14px;
+    font-weight: 800;
+    box-shadow: 0 18px 34px rgba(245, 158, 11, 0.26);
+    cursor: pointer;
+    font-family: inherit;
+  }
+
   @media (max-width: 1024px) {
     .pd-hero,
     .pd-content-grid {
@@ -606,6 +663,13 @@ const pageStyles = `
     .pd-secondary-button {
       width: 100%;
     }
+
+    .pd-floating-chat {
+      right: 12px;
+      bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+      padding: 13px 16px;
+      font-size: 13px;
+    }
   }
 `;
 
@@ -622,15 +686,24 @@ const PetDetail = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [inquiryMessage, setInquiryMessage] = useState("");
   const [ownerForm, setOwnerForm] = useState({
     location: "",
     description: "",
   });
+  const [applicationForm, setApplicationForm] = useState({
+    preferredVisitDate: "",
+    meetingPreference: "rehomer_home",
+    meetingLocationNotes: "",
+    housingType: "",
+    hasOtherPets: false,
+    hasChildren: false,
+    petExperience: "",
+    canAffordVetCare: false,
+    message: "",
+  });
   const [isUpdatingOwnerNotes, setIsUpdatingOwnerNotes] = useState(false);
   const [isUploadingExtraImage, setIsUploadingExtraImage] = useState(false);
   const { updatePetPouchCount } = useContext(PetPouchContext);
-  const hasSeededInquiryRef = useRef(false);
 
   const currentUserId = user?.id ?? userData?.id ?? null;
   const isOwner =
@@ -655,12 +728,6 @@ const PetDetail = () => {
     });
     setActiveImageIndex(0);
 
-    if (!hasSeededInquiryRef.current) {
-      setInquiryMessage(
-        `Hi ${pet.rehomerName}, I am interested in ${pet.name}. Can you tell me more about the pet's feeding routine, vaccination history, and daily care needs?`,
-      );
-      hasSeededInquiryRef.current = true;
-    }
   }, [pet]);
 
   useEffect(() => {
@@ -737,7 +804,17 @@ const PetDetail = () => {
       setActionError("");
       await createAdoptionApplication({
         pet_id: Number(id),
-        message: `I'm interested in adopting ${pet.name}.`,
+        message:
+          applicationForm.message.trim() ||
+          `I'm interested in adopting ${pet.name}.`,
+        housing_type: applicationForm.housingType,
+        has_other_pets: applicationForm.hasOtherPets,
+        has_children: applicationForm.hasChildren,
+        pet_experience: applicationForm.petExperience,
+        can_afford_vet_care: applicationForm.canAffordVetCare,
+        preferred_visit_date: applicationForm.preferredVisitDate || null,
+        meeting_preference: applicationForm.meetingPreference,
+        meeting_location_notes: applicationForm.meetingLocationNotes,
       });
 
       setIsInterested(true);
@@ -749,7 +826,7 @@ const PetDetail = () => {
     }
   };
 
-  const handleInquirySubmit = async () => {
+  const handleOpenChat = async () => {
     if (!getAccessToken()) {
       setActionError("Please log in to message the rehomer about this pet.");
       navigate("/login/user");
@@ -757,17 +834,12 @@ const PetDetail = () => {
     }
 
     try {
-      setIsSubmitting(true);
       setActionError("");
-      await createAdoptionApplication({
-        pet_id: Number(id),
-        message: inquiryMessage.trim() || `Hi ${pet.rehomerName}, I would like to know more about ${pet.name}.`,
-      });
-
-      setIsInterested(true);
-      updatePetPouchCount();
+      setIsSubmitting(true);
+      const conversation = await startConversation(id);
+      navigate(`/chats/${conversation.id}`);
     } catch (err) {
-      setActionError(err.message || "Failed to send your message to the rehomer.");
+      setActionError(err.message || "Failed to open your chat with the rehomer.");
     } finally {
       setIsSubmitting(false);
     }
@@ -821,6 +893,14 @@ const PetDetail = () => {
     setOwnerForm((currentForm) => ({
       ...currentForm,
       [name]: value,
+    }));
+  };
+
+  const handleApplicationFormChange = (event) => {
+    const { name, value, type, checked } = event.target;
+    setApplicationForm((currentForm) => ({
+      ...currentForm,
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
@@ -1124,62 +1204,6 @@ const PetDetail = () => {
           </div>
 
           <aside className="pd-side-column">
-            <article className="pd-card pd-card--warm">
-              <div className="pd-card-head">
-                <span className="pd-card-kicker">Rehomer</span>
-                <h2>Ask about this pet</h2>
-              </div>
-              <p className="pd-body-copy">
-                Ask about food, vaccination records, behavior, routines, or anything else that matters before adopting.
-              </p>
-              {canShowAdopterActions ? (
-                <>
-                  {actionError ? <p className="pd-error">{actionError}</p> : null}
-                  {isLoggedIn ? (
-                    <>
-                      <textarea
-                        value={inquiryMessage}
-                        onChange={(event) => setInquiryMessage(event.target.value)}
-                        className="pd-textarea"
-                        rows={6}
-                        placeholder="Write your question to the rehomer"
-                      />
-                      <div className="pd-side-actions">
-                        <button
-                          type="button"
-                          onClick={handleInquirySubmit}
-                          className="pd-primary-button"
-                          disabled={isSubmitting || isInterested}
-                        >
-                          {isInterested ? "Message sent" : isSubmitting ? "Sending..." : "Send question to rehomer"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSaveToPetPouch}
-                          className="pd-secondary-button"
-                          disabled={isSaving || isSaved}
-                        >
-                          {isSaved ? "Saved to Pet Pouch" : isSaving ? "Saving..." : "Save to Pet Pouch"}
-                        </button>
-                      </div>
-                      {isInterested ? (
-                        <p className="pd-success">Your question has been sent. The rehomer can now see your interest and message.</p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <div className="pd-login-card">
-                      <p>Log in to message the rehomer and keep track of your interest in {pet.name}.</p>
-                      <button type="button" onClick={() => navigate("/login/user")} className="pd-primary-button">
-                        Log in to ask a question
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="pd-body-copy">Adopter contact tools only appear for available pets that you do not own.</p>
-              )}
-            </article>
-
             {canShowAdopterActions && !isInterested ? (
               <article className="pd-card">
                 <div className="pd-card-head">
@@ -1187,8 +1211,113 @@ const PetDetail = () => {
                   <h2>Ready to take the next step?</h2>
                 </div>
                 <p className="pd-body-copy">
-                  If you already have enough information, you can send a direct adoption interest to the rehomer.
+                  If this feels like a good match, send a proper request with your preferred visit date, meeting plan, and a little information about your home.
                 </p>
+                {actionError ? <p className="pd-error">{actionError}</p> : null}
+                <div className="pd-form-grid">
+                  <label className="pd-field">
+                    <span>Preferred visit date</span>
+                    <input
+                      type="date"
+                      name="preferredVisitDate"
+                      value={applicationForm.preferredVisitDate}
+                      onChange={handleApplicationFormChange}
+                      className="pd-input"
+                    />
+                  </label>
+                  <label className="pd-field">
+                    <span>How would you like to meet?</span>
+                    <select
+                      name="meetingPreference"
+                      value={applicationForm.meetingPreference}
+                      onChange={handleApplicationFormChange}
+                      className="pd-input"
+                    >
+                      {meetingPreferenceOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="pd-field">
+                    <span>Home setup</span>
+                    <select
+                      name="housingType"
+                      value={applicationForm.housingType}
+                      onChange={handleApplicationFormChange}
+                      className="pd-input"
+                    >
+                      {housingOptions.map((option) => (
+                        <option key={option.value || "empty"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="pd-field">
+                    <span>Meeting or location notes</span>
+                    <textarea
+                      name="meetingLocationNotes"
+                      value={applicationForm.meetingLocationNotes}
+                      onChange={handleApplicationFormChange}
+                      className="pd-textarea"
+                      rows={3}
+                      placeholder="For example, I’m available in Kilimani after 4pm, or we can meet at a safe public place."
+                    />
+                  </label>
+                  <label className="pd-field">
+                    <span>Pet care experience</span>
+                    <textarea
+                      name="petExperience"
+                      value={applicationForm.petExperience}
+                      onChange={handleApplicationFormChange}
+                      className="pd-textarea"
+                      rows={3}
+                      placeholder="Share any experience you already have caring for similar pets."
+                    />
+                  </label>
+                  <label className="pd-field">
+                    <span>Message to the rehomer</span>
+                    <textarea
+                      name="message"
+                      value={applicationForm.message}
+                      onChange={handleApplicationFormChange}
+                      className="pd-textarea"
+                      rows={4}
+                      placeholder={`Tell the rehomer why ${pet.name} feels like a good fit for you.`}
+                    />
+                  </label>
+                </div>
+                <div className="pd-checklist">
+                  <label className="pd-checklist-item">
+                    <input
+                      type="checkbox"
+                      name="hasOtherPets"
+                      checked={applicationForm.hasOtherPets}
+                      onChange={handleApplicationFormChange}
+                    />{" "}
+                    I already have other pets at home
+                  </label>
+                  <label className="pd-checklist-item">
+                    <input
+                      type="checkbox"
+                      name="hasChildren"
+                      checked={applicationForm.hasChildren}
+                      onChange={handleApplicationFormChange}
+                    />{" "}
+                    Children live in or regularly visit my home
+                  </label>
+                  <label className="pd-checklist-item">
+                    <input
+                      type="checkbox"
+                      name="canAffordVetCare"
+                      checked={applicationForm.canAffordVetCare}
+                      onChange={handleApplicationFormChange}
+                    />{" "}
+                    I can commit to vet care and follow-up pet costs
+                  </label>
+                </div>
                 <div className="pd-side-actions">
                   <button
                     type="button"
@@ -1198,12 +1327,78 @@ const PetDetail = () => {
                   >
                     {isSubmitting ? "Submitting..." : "I'm interested in adopting"}
                   </button>
+                  {isLoggedIn && !isSaved ? (
+                    <button
+                      type="button"
+                      onClick={handleSaveToPetPouch}
+                      className="pd-secondary-button"
+                      disabled={isSaving}
+                    >
+                  {isSaving ? "Saving..." : "Save to Pet Pouch"}
+                    </button>
+                  ) : null}
+                  {isLoggedIn ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenChat}
+                      className="pd-secondary-button"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? "Opening chat..." : "Chat before sending"}
+                    </button>
+                  ) : null}
+                </div>
+                {!isLoggedIn ? (
+                  <div className="pd-login-card">
+                    <p>Log in to save {pet.name} or open a chat with the rehomer.</p>
+                    <button type="button" onClick={() => navigate("/login/user")} className="pd-primary-button">
+                      Log in
+                    </button>
+                  </div>
+                ) : null}
+                {isSaved ? (
+                  <p className="pd-success">{pet.name} is already in your Pet Pouch.</p>
+                ) : null}
+              </article>
+            ) : null}
+
+            {canShowAdopterActions && isInterested ? (
+              <article className="pd-card">
+                <div className="pd-card-head">
+                  <span className="pd-card-kicker">Request Sent</span>
+                  <h2>Your adoption request is now active</h2>
+                </div>
+                <p className="pd-body-copy">
+                  The rehomer can now review your visit plan, location notes, and home details. We will keep this request updated when the rehomer replies, approves it, or responds to your meeting plan.
+                </p>
+                <div className="pd-side-actions">
+                  <button
+                    type="button"
+                    onClick={handleOpenChat}
+                    className="pd-primary-button"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "Opening chat..." : "Open chat"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/my-listing")}
+                    className="pd-secondary-button"
+                  >
+                    View my requests
+                  </button>
                 </div>
               </article>
             ) : null}
           </aside>
         </section>
       </div>
+      {canShowAdopterActions ? (
+        <button type="button" className="pd-floating-chat" onClick={handleOpenChat}>
+          Chat with rehomer
+        </button>
+      ) : null}
+      {isRehomerView ? <RehomerWorkspaceNav /> : null}
     </div>
   );
 };

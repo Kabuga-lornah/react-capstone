@@ -1,0 +1,645 @@
+.community-feed-shell {
+  max-width: 620px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 0 0 110px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 205, 118, 0.18), transparent 28%),
+    linear-gradient(180deg, #fff9f2 0%, #fffefb 100%);
+}
+
+.community-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: rgba(255, 249, 242, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 185, 90, 0.18);
+}
+
+.community-header__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: #2c1700;
+}
+
+.community-fab {
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #ffab16 0%, #ff8600 100%);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(255, 134, 0, 0.35);
+}
+
+.community-quick-share {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 16px;
+  padding: 12px;
+  border: 1px solid rgba(255, 185, 90, 0.2);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 18px rgba(125, 88, 32, 0.06);
+}
+
+.community-quick-share__prompt {
+  flex: 1;
+  text-align: left;
+  border: 1px solid rgba(255, 185, 90, 0.22);
+  border-radius: 999px;
+  background: #fffdf9;
+  color: #8b7049;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.community-composer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 14px 24px;
+  background: rgba(44, 23, 0, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+.community-composer-card {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(255, 185, 90, 0.2);
+  border-radius: 20px;
+  background: #fff9f2;
+  box-shadow: 0 20px 60px rgba(125, 88, 32, 0.18);
+}
+
+.community-composer-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.community-composer-card__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.community-composer-alias {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #2c1700;
+}
+
+.community-composer-card__hint {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: #8b7049;
+}
+
+.community-composer-close {
+  border: none;
+  background: transparent;
+  color: #9d6200;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.community-composer-textarea,
+.community-composer-url,
+.community-alias-form input,
+.community-reply-media-fields input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 185, 90, 0.22);
+  border-radius: 14px;
+  background: #fffdf9;
+  color: #2c1700;
+  font: inherit;
+}
+
+.community-composer-textarea {
+  min-height: 120px;
+  resize: vertical;
+  padding: 12px 14px;
+  font-size: 0.98rem;
+}
+
+.community-composer-url,
+.community-alias-form input,
+.community-reply-media-fields input {
+  padding: 10px 14px;
+  font-size: 0.9rem;
+}
+
+.community-composer-tools,
+.community-reply-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.community-composer-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.community-btn-primary,
+.community-btn-ghost {
+  border-radius: 20px;
+  padding: 9px 18px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.community-btn-primary {
+  border: none;
+  background: linear-gradient(135deg, #ffab16 0%, #ff8600 100%);
+  color: #fff;
+}
+
+.community-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.community-btn-ghost {
+  border: 1px solid rgba(255, 185, 90, 0.35);
+  background: transparent;
+  color: #9d6200;
+}
+
+.community-alias-banner {
+  margin: 12px 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 185, 90, 0.18);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4px 12px rgba(125, 88, 32, 0.05);
+}
+
+.community-alias-banner p {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #47321a;
+}
+
+.community-alias-form {
+  display: flex;
+  gap: 8px;
+}
+
+.community-inline-error {
+  margin: 0 16px 10px;
+  padding: 12px 14px;
+  border: 1px solid #f2bdbd;
+  border-radius: 14px;
+  background: #fff1f1;
+  color: #c62828;
+  font-size: 0.88rem;
+}
+
+.community-feed-list {
+  display: grid;
+}
+
+.community-feed-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 180px;
+  color: #8b7049;
+  font-size: 0.92rem;
+}
+
+.community-feed-empty__icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.community-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 185, 90, 0.25);
+  border-top-color: #ff8600;
+  border-radius: 50%;
+  animation: community-spin 0.7s linear infinite;
+}
+
+@keyframes community-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.community-tweet {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 185, 90, 0.14);
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.community-tweet:hover {
+  background: rgba(255, 245, 228, 0.45);
+}
+
+.community-tweet--repost {
+  background: linear-gradient(180deg, rgba(255, 248, 236, 0.88) 0%, rgba(255, 253, 249, 0.88) 100%);
+}
+
+.community-tweet__repost-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px 52px;
+  color: #8f7f5e;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.community-tweet__header,
+.community-reply__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.community-tweet__avatar,
+.community-reply__avatar {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 900;
+  background: linear-gradient(135deg, #ffd166 0%, #ff9f1a 100%);
+  flex-shrink: 0;
+}
+
+.community-tweet__avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  font-size: 1rem;
+}
+
+.community-reply__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+}
+
+.community-reply__avatar--small {
+  width: 28px;
+  height: 28px;
+  font-size: 0.7rem;
+}
+
+.community-tweet__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.community-tweet__meta strong,
+.community-reply__meta strong {
+  color: #2c1700;
+}
+
+.community-tweet__meta strong {
+  font-size: 0.92rem;
+}
+
+.community-tweet__time,
+.community-reply__meta span {
+  color: #8b7049;
+}
+
+.community-tweet__time {
+  font-size: 0.78rem;
+}
+
+.community-reply__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.community-reply__meta strong {
+  font-size: 0.85rem;
+}
+
+.community-reply__meta span {
+  font-size: 0.75rem;
+}
+
+.community-tweet__body,
+.community-tweet__quoted,
+.community-tweet__image,
+.community-tweet__comments {
+  margin-left: 52px;
+}
+
+.community-tweet__body {
+  margin-top: 10px;
+  color: #47321a;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.community-tweet__quoted {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 185, 90, 0.18);
+  border-radius: 14px;
+  background: #fff8ef;
+}
+
+.community-tweet__quoted-label {
+  display: inline-flex;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 171, 22, 0.12);
+  color: #9d6200;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.community-tweet__quoted-author {
+  display: block;
+  margin-bottom: 4px;
+  color: #9d6200;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.community-tweet__quoted p,
+.community-reply__body {
+  margin: 0;
+  color: #47321a;
+  line-height: 1.5;
+}
+
+.community-tweet__quoted p {
+  font-size: 0.88rem;
+}
+
+.community-tweet__quoted-image {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  border-radius: 12px;
+  max-height: 240px;
+  object-fit: cover;
+  background: #fff2dd;
+}
+
+.community-reply__body {
+  font-size: 0.88rem;
+}
+
+.community-tweet__image,
+.community-reply__media {
+  display: block;
+  border-radius: 16px;
+  object-fit: cover;
+  background: #fff2dd;
+}
+
+.community-tweet__image {
+  width: calc(100% - 52px);
+  margin-top: 10px;
+  max-height: 340px;
+}
+
+.community-reply__media {
+  width: 100%;
+  margin-top: 10px;
+  max-height: 260px;
+}
+
+.community-tweet__actions,
+.community-reply__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.community-tweet__actions {
+  margin-top: 10px;
+  margin-left: 44px;
+}
+
+.community-reply__actions {
+  margin-top: 6px;
+}
+
+.community-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 20px;
+  background: transparent;
+  color: #8b7049;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.community-action-btn:hover {
+  background: rgba(255, 185, 90, 0.14);
+}
+
+.community-action-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.community-action-btn.is-active {
+  color: #47321a;
+}
+
+.community-action-btn--like:hover,
+.community-action-btn--like.is-active {
+  color: #e0245e;
+  background: rgba(224, 36, 94, 0.08);
+}
+
+.community-action-btn--repost:hover,
+.community-action-btn--repost.is-active {
+  color: #17bf63;
+  background: rgba(23, 191, 99, 0.08);
+}
+
+.community-action-btn--dislike:hover,
+.community-action-btn--dislike.is-active {
+  color: #ff6b00;
+  background: rgba(255, 107, 0, 0.08);
+}
+
+.community-tweet__comments {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.community-reply {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 185, 90, 0.14);
+  border-radius: 14px;
+  background: #fffaf4;
+}
+
+.community-reply__sticker {
+  margin-top: 8px;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.community-reply-form {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid rgba(255, 185, 90, 0.18);
+  border-radius: 24px;
+  background: #fffaf4;
+}
+
+.community-reply-form__content {
+  flex: 1;
+  display: grid;
+  gap: 8px;
+}
+
+.community-reply-form input {
+  border: none;
+  background: transparent;
+  color: #2c1700;
+  font: inherit;
+  font-size: 0.88rem;
+  outline: none;
+}
+
+.community-reply-tool,
+.community-reply-sticker {
+  border: 1px solid rgba(255, 185, 90, 0.22);
+  border-radius: 999px;
+  background: #fffdf9;
+  color: #8b7049;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.community-reply-tool {
+  padding: 5px 10px;
+  font-size: 0.72rem;
+}
+
+.community-reply-sticker {
+  padding: 4px 8px;
+  font-size: 0.95rem;
+}
+
+.community-reply-tool:hover,
+.community-reply-sticker:hover,
+.community-reply-sticker.is-active {
+  background: rgba(255, 185, 90, 0.14);
+  color: #9d6200;
+}
+
+.community-reply-media-fields {
+  display: grid;
+  gap: 6px;
+}
+
+.community-reply-send {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #ffab16 0%, #ff8600 100%);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.community-reply-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .community-alias-form {
+    flex-direction: column;
+  }
+
+  .community-composer-card__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .community-composer-close {
+    align-self: flex-end;
+  }
+
+  .community-tweet__body,
+  .community-tweet__quoted,
+  .community-tweet__image,
+  .community-tweet__comments,
+  .community-tweet__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .community-tweet__actions {
+    flex-wrap: wrap;
+  }
+
+  .community-tweet__image {
+    width: 100%;
+  }
+
+  .community-tweet__repost-banner {
+    margin-left: 0;
+  }
+}

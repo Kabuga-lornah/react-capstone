@@ -248,10 +248,14 @@ const AddPetForm = () => {
     customPetType: "",
     imageFile: null,
     imageUrl: "",
+    vaccinationProofFile: null,
+    dewormingProofFile: null,
+    neuteringProofFile: null,
     isVaccinated: false,
     isDewormed: false,
     isNeutered: false,
     adoptionFee: "",
+    adoptionFeeReason: "",
     energyLevel: "unknown",
     careLevel: "unknown",
     spaceNeeded: "unknown",
@@ -299,6 +303,7 @@ const AddPetForm = () => {
   const previewFee = formData.adoptionFee
     ? `KSh ${Number(formData.adoptionFee).toLocaleString()}`
     : "Adoption fee not set";
+  const requiresFeeReason = Number(formData.adoptionFee || 0) > 1000;
 
   const previewPetTypeLabel =
     formData.type === "other" && formData.customPetType.trim()
@@ -377,7 +382,28 @@ const AddPetForm = () => {
         imageUrl: URL.createObjectURL(file),
       };
     });
-    resetImageFraming();
+    setError("");
+  };
+
+  const handleProofFileChange = (fieldName, file) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.match("image.*")) {
+      setError("Please select an image file (JPEG or PNG).");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      setError("Image must be smaller than 5MB.");
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      [fieldName]: file,
+    }));
     setError("");
   };
 
@@ -434,12 +460,23 @@ const AddPetForm = () => {
     setSuccessMessage("");
 
     try {
+      if (requiresFeeReason && !formData.adoptionFeeReason.trim()) {
+        throw new Error("Please explain why the adoption fee is above KSh 1,000.");
+      }
+
       const customTypePrefix =
         formData.type === "other" && formData.customPetType.trim()
           ? `Pet type: ${formData.customPetType.trim()}. `
           : "";
+      const feeReasonPrefix =
+        requiresFeeReason && formData.adoptionFeeReason.trim()
+          ? `Adoption fee note: ${formData.adoptionFeeReason.trim()}. `
+          : "";
 
       let uploadedImageUrl = "";
+      let vaccinationProofUrl = "";
+      let dewormingProofUrl = "";
+      let neuteringProofUrl = "";
 
       if (formData.imageFile) {
         uploadedImageUrl = await uploadImageToCloudinary(formData.imageFile);
@@ -447,14 +484,39 @@ const AddPetForm = () => {
         uploadedImageUrl = getDefaultPreviewImage(formData.type);
       }
 
+      if (formData.isVaccinated) {
+        if (!formData.vaccinationProofFile) {
+          throw new Error("Upload vaccination proof before marking this pet as vaccinated.");
+        }
+        vaccinationProofUrl = await uploadImageToCloudinary(formData.vaccinationProofFile);
+      }
+
+      if (formData.isDewormed) {
+        if (!formData.dewormingProofFile) {
+          throw new Error("Upload deworming proof before marking this pet as dewormed.");
+        }
+        dewormingProofUrl = await uploadImageToCloudinary(formData.dewormingProofFile);
+      }
+
+      if (formData.isNeutered) {
+        if (!formData.neuteringProofFile) {
+          throw new Error("Upload spay or neuter proof before marking this pet as neutered.");
+        }
+        neuteringProofUrl = await uploadImageToCloudinary(formData.neuteringProofFile);
+      }
+
       const payload = {
         name: formData.name,
         species: formData.type,
+        custom_species:
+          formData.type === "other" && formData.customPetType.trim()
+            ? formData.customPetType.trim()
+            : "",
         breed: formData.breed,
         age: formData.age,
         gender: formData.gender,
         location: formData.location || formData.requirements,
-        description: `${customTypePrefix}${formData.description}`.trim(),
+        description: `${customTypePrefix}${feeReasonPrefix}${formData.description}`.trim(),
         personality_traits: formData.personality,
         energy_level: formData.energyLevel,
         care_level: formData.careLevel,
@@ -467,6 +529,9 @@ const AddPetForm = () => {
         is_vaccinated: formData.isVaccinated,
         is_dewormed: formData.isDewormed,
         is_neutered: formData.isNeutered,
+        vaccination_proof_url: vaccinationProofUrl,
+        deworming_proof_url: dewormingProofUrl,
+        neutering_proof_url: neuteringProofUrl,
         adoption_fee: formData.adoptionFee || "0.00",
         status: "available",
         image_url: uploadedImageUrl,
@@ -516,18 +581,18 @@ const AddPetForm = () => {
             <p className="add-pet-state-card__copy">
               Your current verification status is <strong>{verificationStatus}</strong>. Submit your rehomer profile and ID details first, then you can return here once approved.
             </p>
-            <div className="add-pet-submit">
+            <div className="add-pet-state-actions">
               <button
                 type="button"
                 onClick={() => navigate("/rehomer-profile")}
-                className="add-pet-submit__primary"
+                className="add-pet-state-actions__primary"
               >
                 Go to Rehomer Profile
               </button>
               <button
                 type="button"
                 onClick={() => navigate("/rehomer-dashboard")}
-                className="add-pet-submit__secondary"
+                className="add-pet-state-actions__secondary"
               >
                 Back to Dashboard
               </button>
@@ -546,12 +611,12 @@ const AddPetForm = () => {
             <span className="add-pet-badge">Rehomer Listing Studio</span>
             <h1>Add a New Pet</h1>
             <p className="add-pet-hero__subtitle">
-              Create a warm, honest profile to help your pet find a safe home.
+              Add the essentials clearly so the right adopter can find this pet.
             </p>
           </div>
           <div className="add-pet-hero__tip">
-            <strong>Helpful note</strong>
-            <span>Clear photos and honest details improve adoption chances.</span>
+            <strong>Quick tip</strong>
+            <span>Use one clear photo and a short honest description.</span>
           </div>
         </section>
 
@@ -563,8 +628,8 @@ const AddPetForm = () => {
             <section className="add-pet-section">
               <div className="add-pet-section__header">
                 <span className="add-pet-section__eyebrow">Pet Photo</span>
-                <h2>Lead with a warm first impression</h2>
-                <p>Upload a clear photo that helps adopters feel connected right away.</p>
+                <h2>Start with one clear photo</h2>
+                <p>Keep it simple. A bright face-forward photo is enough.</p>
               </div>
 
               <div className="add-pet-upload">
@@ -581,7 +646,7 @@ const AddPetForm = () => {
                   className="add-pet-upload__dropzone"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <span className="add-pet-upload__icon">📸</span>
+                  <span className="add-pet-upload__icon">Upload</span>
                   <strong>{formData.imageFile ? "Replace your photo" : "Upload a pet photo"}</strong>
                   <span>JPEG or PNG, up to 5MB</span>
                   <em>{uploadingImage ? "Uploading image..." : formData.imageFile ? "Ready to upload" : "Tap to choose a file"}</em>
@@ -593,7 +658,6 @@ const AddPetForm = () => {
                       src={previewImage}
                       alt="Pet preview"
                       className="add-pet-upload__preview-image"
-                      style={previewImageStyle}
                     />
                   </div>
                   <div className="add-pet-upload__preview-copy">
@@ -684,14 +748,14 @@ const AddPetForm = () => {
             <section className="add-pet-section">
               <div className="add-pet-section__header">
                 <span className="add-pet-section__eyebrow">Basic Details</span>
-                <h2>Share the essentials clearly</h2>
-                <p>These are the details adopters look for first when deciding if a pet fits their home.</p>
+                <h2>Basic details</h2>
+                <p>Only the key details adopters need first.</p>
               </div>
 
               <div className="add-pet-grid add-pet-grid--two">
                 <label className="add-pet-field">
                   <span>Pet Name</span>
-                  <small>Use the name adopters should recognize.</small>
+                  <small>Name shown on the listing.</small>
                   <input
                     name="name"
                     value={formData.name}
@@ -703,7 +767,7 @@ const AddPetForm = () => {
 
                 <label className="add-pet-field">
                   <span>Breed</span>
-                  <small>Include the breed or a helpful best guess.</small>
+                  <small>Breed or best guess.</small>
                   <input
                     name="breed"
                     value={formData.breed}
@@ -715,7 +779,7 @@ const AddPetForm = () => {
 
                 <label className="add-pet-field">
                   <span>Age</span>
-                  <small>Use years, months, or a short estimate.</small>
+                  <small>Years, months, or estimate.</small>
                   <input
                     name="age"
                     value={formData.age}
@@ -726,7 +790,7 @@ const AddPetForm = () => {
 
                 <label className="add-pet-field">
                   <span>Gender</span>
-                  <small>Select the gender if known.</small>
+                  <small>If known.</small>
                   <AddPetThemedSelect
                     name="gender"
                     value={formData.gender}
@@ -739,7 +803,7 @@ const AddPetForm = () => {
 
                 <label className="add-pet-field">
                   <span>Pet Type</span>
-                  <small>Choose the species adopters will browse under.</small>
+                  <small>Main pet type.</small>
                   <AddPetThemedSelect
                     name="type"
                     value={formData.type}
@@ -753,7 +817,7 @@ const AddPetForm = () => {
                 {formData.type === "other" ? (
                   <label className="add-pet-field">
                     <span>Actual Pet Type</span>
-                    <small>Tell adopters what kind of pet this is, for example turtle, duck, hamster, or goat.</small>
+                    <small>For example turtle or hamster.</small>
                     <input
                       name="customPetType"
                       value={formData.customPetType}
@@ -766,7 +830,7 @@ const AddPetForm = () => {
 
                 <label className="add-pet-field">
                   <span>Location</span>
-                  <small>City, neighborhood, or area is enough.</small>
+                  <small>City or neighborhood is enough.</small>
                   <input
                     name="location"
                     value={formData.location}
@@ -780,8 +844,8 @@ const AddPetForm = () => {
             <section className="add-pet-section">
               <div className="add-pet-section__header">
                 <span className="add-pet-section__eyebrow">Personality & Story</span>
-                <h2>Help adopters imagine life together</h2>
-                <p>Describe the pet with warmth and honesty so the right home can recognize a good fit.</p>
+                <h2>Personality</h2>
+                <p>Short and honest is better than too much detail.</p>
               </div>
 
               <div className="add-pet-field">
@@ -806,7 +870,7 @@ const AddPetForm = () => {
 
               <label className="add-pet-field">
                 <span>Description</span>
-                <small>What is this pet like day to day? Mention temperament, habits, and the kind of home that fits best.</small>
+                <small>Temperament, routine, and best home fit.</small>
                 <textarea
                   name="description"
                   value={formData.description}
@@ -820,14 +884,14 @@ const AddPetForm = () => {
             <section className="add-pet-section">
               <div className="add-pet-section__header">
                 <span className="add-pet-section__eyebrow">Adoption Requirements</span>
-                <h2>Set expectations with care</h2>
-                <p>Share any needs about the home, routine, or adopter setup that would help this pet transition well.</p>
+                <h2>Home requirements</h2>
+                <p>Only add what really matters.</p>
               </div>
 
               <div className="add-pet-grid add-pet-grid--two">
                 <label className="add-pet-field add-pet-field--wide">
                   <span>Adoption Requirements</span>
-                  <small>This can include home setup, schedule, experience, or anything adopters should know.</small>
+                  <small>Home setup, schedule, or experience needed.</small>
                   <textarea
                     name="requirements"
                     value={formData.requirements}
@@ -839,7 +903,7 @@ const AddPetForm = () => {
 
                 <label className="add-pet-field">
                   <span>Adoption Fee</span>
-                  <small>Leave blank if no fee applies.</small>
+                  <small>Optional. Keep the price fair and reasonable.</small>
                   <input
                     name="adoptionFee"
                     type="number"
@@ -850,19 +914,37 @@ const AddPetForm = () => {
                     placeholder="0.00"
                   />
                 </label>
+
+                {requiresFeeReason ? (
+                  <label className="add-pet-field add-pet-field--wide add-pet-field--notice">
+                    <span>Why is the fee above KSh 1,000?</span>
+                    <small>Explain the reason so adopters understand the price.</small>
+                    <textarea
+                      name="adoptionFeeReason"
+                      value={formData.adoptionFeeReason}
+                      onChange={handleChange}
+                      placeholder="For example, recent vaccination costs, special medical care, or breed-specific upkeep."
+                      rows={3}
+                      required
+                    />
+                  </label>
+                ) : null}
               </div>
             </section>
 
             <section className="add-pet-section">
               <div className="add-pet-section__header">
                 <span className="add-pet-section__eyebrow">Care & Compatibility</span>
-                <h2>Add the details that improve matching</h2>
-                <p>These structured details help adopters and the quiz understand what kind of home is most suitable.</p>
+                <h2>Care and compatibility</h2>
+                <p>Quick selections to help matching.</p>
               </div>
 
                 <div className="add-pet-select-grid">
-                  {careFields.map((field) => (
-                    <label key={field.name} className="add-pet-select-card">
+                  {careFields.map((field, index) => (
+                    <label
+                      key={field.name}
+                      className={`add-pet-select-card add-pet-select-card--tone-${(index % 4) + 1}`}
+                    >
                       <span>{field.label}</span>
                       <small>{field.helper}</small>
                       <AddPetThemedSelect
@@ -881,29 +963,46 @@ const AddPetForm = () => {
             <section className="add-pet-section">
               <div className="add-pet-section__header">
                 <span className="add-pet-section__eyebrow">Health Checklist</span>
-                <h2>Mark only health details you can confirm</h2>
-                <p>
-                  These notes should be backed by something reliable, like a vet card,
-                  vaccination booklet, clinic note, or receipt. If you are unsure, leave
-                  it unchecked and explain what you know in the description.
-                </p>
+                <h2>Health details</h2>
+                <p>Only mark what you can confirm.</p>
               </div>
 
               <div className="add-pet-toggle-grid">
-                {healthChecklist.map((item) => (
-                  <label key={item.name} className={`add-pet-toggle-card ${formData[item.name] ? "add-pet-toggle-card--selected" : ""}`}>
-                    <input
-                      type="checkbox"
-                      name={item.name}
-                      checked={formData[item.name]}
-                      onChange={handleChange}
-                    />
-                    <div>
-                      <span>{item.label}</span>
-                      <small>{item.helper}</small>
-                    </div>
-                  </label>
-                ))}
+                {healthChecklist.map((item) => {
+                  const proofFieldMap = {
+                    isVaccinated: "vaccinationProofFile",
+                    isDewormed: "dewormingProofFile",
+                    isNeutered: "neuteringProofFile",
+                  };
+                  const proofField = proofFieldMap[item.name];
+                  const proofFile = formData[proofField];
+
+                  return (
+                    <label key={item.name} className={`add-pet-toggle-card ${formData[item.name] ? "add-pet-toggle-card--selected" : ""}`}>
+                      <input
+                        type="checkbox"
+                        name={item.name}
+                        checked={formData[item.name]}
+                        onChange={handleChange}
+                      />
+                      <div>
+                        <span>{item.label}</span>
+                        <small>{item.helper}</small>
+                        {formData[item.name] ? (
+                          <div className="add-pet-proof-upload">
+                            <span className="add-pet-proof-upload__label">Upload proof image</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(event) => handleProofFileChange(proofField, event.target.files?.[0])}
+                            />
+                            <em>{proofFile ? proofFile.name : "A JPG or PNG proof is required."}</em>
+                          </div>
+                        ) : null}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </section>
 
@@ -913,7 +1012,7 @@ const AddPetForm = () => {
                 disabled={loading || uploadingImage || authLoading}
                 className="add-pet-submit__primary"
               >
-                {loading ? "Adding Pet..." : "Create Pet Listing"}
+                {loading ? "Adding Pet..." : "Publish Listing"}
                 {uploadingImage ? " (Uploading Image...)" : ""}
               </button>
               <button
@@ -958,10 +1057,9 @@ const AddPetForm = () => {
             </div>
 
             <div className="add-pet-tips-card">
-              <span className="add-pet-card-badge">Listing Tips</span>
-              <h3>Small details build trust</h3>
+              <span className="add-pet-card-badge">Quick checklist</span>
               <ul>
-                {listingTips.map((tip) => (
+                {listingTips.slice(0, 3).map((tip) => (
                   <li key={tip}>{tip}</li>
                 ))}
               </ul>

@@ -3,11 +3,28 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenObtainPairView
 from django.utils import timezone
 
-from .models import AdoptionApplication, CustomUser, Notification, Pet, PetWishlist
+from .models import (
+    AdoptionApplication,
+    CommunityComment,
+    CommunityPost,
+    CommunityReaction,
+    Conversation,
+    ConversationMessage,
+    CustomUser,
+    Notification,
+    Pet,
+    PetWishlist,
+)
 from .serializers import (
     AdoptionApplicationSerializer,
+    ConversationMessageCreateSerializer,
+    ConversationSerializer,
+    CommunityCommentCreateSerializer,
+    CommunityCommentSerializer,
+    CommunityPostSerializer,
     NotificationSerializer,
     PetSerializer,
     PetWishlistSerializer,
@@ -15,9 +32,61 @@ from .serializers import (
     RegisterSerializer,
     UserSerializer,
     UserProfileUpdateSerializer,
+    VisitPlanUpdateSerializer,
+    AppTokenObtainPairSerializer,
 )
 
 ALLOWED_PET_MANAGER_ROLES = {'rehomer', 'shelter_admin'}
+ADMIN_ROLES = {'shelter_admin', 'platform_admin'}
+
+
+def ensure_admin(user):
+    if user.role not in ADMIN_ROLES:
+        raise PermissionDenied('Only admins can access this resource.')
+
+
+def get_conversation_for_user_or_404(user, pk):
+    conversation = generics.get_object_or_404(
+        Conversation.objects.select_related('pet', 'adopter', 'rehomer', 'pet__owner', 'pet__shelter')
+        .prefetch_related('pet__images', 'messages__sender'),
+        pk=pk,
+    )
+
+    if conversation.adopter_id != user.id and conversation.rehomer_id != user.id:
+        raise PermissionDenied('You do not have access to this conversation.')
+
+    return conversation
+
+
+def create_notification(
+    *,
+    recipient,
+    actor,
+    pet,
+    type,
+    title,
+    message,
+    application=None,
+    conversation=None,
+    allow_self=False,
+):
+    if not recipient or not actor or (recipient == actor and not allow_self):
+        return
+
+    Notification.objects.create(
+        recipient=recipient,
+        actor=actor,
+        pet=pet,
+        application=application,
+        conversation=conversation,
+        type=type,
+        title=title,
+        message=message,
+    )
+
+
+class AppTokenObtainPairView(TokenObtainPairView):
+    serializer_class = AppTokenObtainPairSerializer
 
 
 class RegisterView(generics.CreateAPIView):
@@ -43,6 +112,112 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(UserSerializer(instance, context={'request': request}).data)
+
+
+class AdminDashboardView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        ensure_admin(request.user)
+
+        pending_rehomers = CustomUser.objects.filter(
+            role=CustomUser.REHOMER,
+            rehomer_verification_status=CustomUser.PENDING,
+        ).order_by('-rehomer_verification_submitted_at')
+
+        recent_pets = (
+            Pet.objects.select_related('owner', 'shelter')
+            .prefetch_related('images')
+            .order_by('-created_at')[:12]
+        )
+
+        recent_applications = (
+            AdoptionApplication.objects.select_related('pet', 'applicant', 'pet__owner', 'pet__shelter')
+            .prefetch_related('pet__images')
+            .order_by('-created_at')[:12]
+        )
+
+        return Response(
+            {
+                'counts': {
+                    'pending_rehomer_reviews': pending_rehomers.count(),
+                    'total_rehomers': CustomUser.objects.filter(role=CustomUser.REHOMER).count(),
+                    'total_users': CustomUser.objects.count(),
+                    'total_pets': Pet.objects.count(),
+                    'pending_applications': AdoptionApplication.objects.filter(
+                        status=AdoptionApplication.PENDING,
+                    ).count(),
+                },
+                'pending_rehomers': UserSerializer(
+                    pending_rehomers,
+                    many=True,
+                    context={'request': request},
+                ).data,
+                'recent_pets': PetSerializer(
+                    recent_pets,
+                    many=True,
+                    context={'request': request},
+                ).data,
+                'recent_applications': AdoptionApplicationSerializer(
+                    recent_applications,
+                    many=True,
+                    context={'request': request},
+                ).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminUserListView(generics.ListAPIView):
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        ensure_admin(self.request.user)
+        return CustomUser.objects.all().order_by('-date_joined', '-id')
+
+
+class AdminPetListView(generics.ListAPIView):
+    serializer_class = PetSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        ensure_admin(self.request.user)
+        return (
+            Pet.objects.select_related('owner', 'shelter')
+            .prefetch_related('images')
+            .order_by('-created_at')
+        )
+
+
+class AdminRehomerReviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        ensure_admin(request.user)
+
+        user = generics.get_object_or_404(CustomUser, pk=pk, role=CustomUser.REHOMER)
+        next_status = request.data.get('status')
+        notes = (request.data.get('notes') or '').strip()
+
+        if next_status not in {CustomUser.VERIFIED, CustomUser.REJECTED}:
+            raise ValidationError({'status': 'Status must be verified or rejected.'})
+
+        user.rehomer_verification_status = next_status
+        user.rehomer_verification_reviewed_at = timezone.now()
+        user.rehomer_verification_notes = notes
+        user.save(
+            update_fields=[
+                'rehomer_verification_status',
+                'rehomer_verification_reviewed_at',
+                'rehomer_verification_notes',
+            ],
+        )
+
+        return Response(
+            UserSerializer(user, context={'request': request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class RehomerVerificationSubmitView(APIView):
@@ -83,6 +258,125 @@ class AuthHeartbeatView(APIView):
                 'activity_status': request.user.activity_status,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+class ConversationListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        conversations = (
+            Conversation.objects.filter(adopter=request.user)
+            | Conversation.objects.filter(rehomer=request.user)
+        )
+        conversations = (
+            conversations.select_related('pet', 'adopter', 'rehomer', 'pet__owner', 'pet__shelter')
+            .prefetch_related('pet__images', 'messages__sender')
+            .distinct()
+            .order_by('-updated_at')
+        )
+
+        return Response(
+            ConversationSerializer(
+                conversations,
+                many=True,
+                context={'request': request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request):
+        pet_id = request.data.get('pet_id')
+
+        if not pet_id:
+            raise ValidationError({'pet_id': 'Pet is required.'})
+
+        pet = generics.get_object_or_404(
+            Pet.objects.select_related('owner', 'shelter').prefetch_related('images'),
+            pk=pet_id,
+        )
+
+        if request.user.role != CustomUser.ADOPTER:
+            raise PermissionDenied('Only adopters can start a chat from a pet listing.')
+
+        if pet.owner_id == request.user.id:
+            raise ValidationError('You cannot chat with yourself about your own pet.')
+
+        if not pet.owner_id:
+            raise ValidationError('This pet does not have an active rehomer yet.')
+
+        conversation, created = Conversation.objects.get_or_create(
+            pet=pet,
+            adopter=request.user,
+            rehomer=pet.owner,
+        )
+
+        serializer = ConversationSerializer(conversation, context={'request': request})
+        return Response(
+            {
+                **serializer.data,
+                'created': created,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class ConversationDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        conversation = get_conversation_for_user_or_404(request.user, pk)
+        unread_messages = conversation.messages.filter(read_at__isnull=True).exclude(sender=request.user)
+        unread_messages.update(read_at=timezone.now())
+        conversation = get_conversation_for_user_or_404(request.user, pk)
+
+        return Response(
+            ConversationSerializer(conversation, context={'request': request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class ConversationMessageCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        conversation = get_conversation_for_user_or_404(request.user, pk)
+        serializer = ConversationMessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        message = ConversationMessage.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            body=serializer.validated_data['body'],
+        )
+        conversation.save(update_fields=['updated_at'])
+
+        recipient = (
+            conversation.rehomer
+            if request.user.id == conversation.adopter_id
+            else conversation.adopter
+        )
+        actor_name = request.user.get_full_name().strip() or request.user.username or request.user.email
+        linked_application = AdoptionApplication.objects.filter(
+            pet=conversation.pet,
+            applicant=conversation.adopter,
+        ).order_by('-created_at').first()
+        create_notification(
+            recipient=recipient,
+            actor=request.user,
+            pet=conversation.pet,
+            application=linked_application,
+            conversation=conversation,
+            type=Notification.CHAT_MESSAGE,
+            title=f"New chat reply about {conversation.pet.name}",
+            message=f"{actor_name} sent a new message about {conversation.pet.name}.",
+        )
+
+        conversation = get_conversation_for_user_or_404(request.user, pk)
+
+        return Response(
+            ConversationSerializer(conversation, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -130,7 +424,11 @@ class PetDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         pet = super().get_object()
 
-        if self.request.method != 'GET' and pet.owner != self.request.user:
+        if (
+            self.request.method != 'GET'
+            and pet.owner != self.request.user
+            and self.request.user.role not in ADMIN_ROLES
+        ):
             raise PermissionDenied('You do not have permission to modify this pet.')
 
         return pet
@@ -157,9 +455,9 @@ class PetCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
-        if request.user.role not in ALLOWED_PET_MANAGER_ROLES:
+        if request.user.role not in ALLOWED_PET_MANAGER_ROLES and request.user.role not in ADMIN_ROLES:
             raise PermissionDenied('Only rehomers or shelter admins can create pets.')
-        if request.user.rehomer_verification_status != CustomUser.VERIFIED:
+        if request.user.role == CustomUser.REHOMER and request.user.rehomer_verification_status != CustomUser.VERIFIED:
             raise PermissionDenied('Complete rehomer verification before listing pets.')
         return super().create(request, *args, **kwargs)
 
@@ -188,7 +486,29 @@ class AdoptionApplicationCreateView(generics.CreateAPIView):
         if existing_application:
             raise ValidationError('You already have an active application for this pet.')
 
-        serializer.save(applicant=self.request.user)
+        application = serializer.save(applicant=self.request.user)
+
+        actor_name = self.request.user.get_full_name().strip() or self.request.user.username or self.request.user.email
+        create_notification(
+            recipient=pet.owner,
+            actor=self.request.user,
+            pet=pet,
+            application=application,
+            type=Notification.APPLICATION_SUBMITTED,
+            title=f"New adoption request for {pet.name}",
+            message=f"{actor_name} submitted an adoption request for {pet.name}.",
+        )
+
+        if application.preferred_visit_date or application.meeting_preference or application.meeting_location_notes:
+            create_notification(
+                recipient=pet.owner,
+                actor=self.request.user,
+                pet=pet,
+                application=application,
+                type=Notification.VISIT_PROPOSED,
+                title=f"Visit proposed for {pet.name}",
+                message=f"{actor_name} suggested a visit plan for {pet.name}.",
+            )
 
 
 class MyApplicationsListView(generics.ListAPIView):
@@ -230,6 +550,17 @@ class ApplicationApproveView(APIView):
             status=AdoptionApplication.PENDING,
         ).exclude(pk=application.pk).update(status=AdoptionApplication.REJECTED)
 
+        actor_name = request.user.get_full_name().strip() or request.user.username or request.user.email
+        create_notification(
+            recipient=application.applicant,
+            actor=request.user,
+            pet=pet,
+            application=application,
+            type=Notification.APPLICATION_APPROVED,
+            title=f"Request approved for {pet.name}",
+            message=f"{actor_name} approved your adoption request for {pet.name}.",
+        )
+
         serializer = AdoptionApplicationSerializer(application, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -248,8 +579,108 @@ class ApplicationRejectView(APIView):
         application.status = AdoptionApplication.REJECTED
         application.save(update_fields=['status', 'updated_at'])
 
+        actor_name = request.user.get_full_name().strip() or request.user.username or request.user.email
+        create_notification(
+            recipient=application.applicant,
+            actor=request.user,
+            pet=application.pet,
+            application=application,
+            type=Notification.APPLICATION_REJECTED,
+            title=f"Request updated for {application.pet.name}",
+            message=f"{actor_name} marked your adoption request for {application.pet.name} as not approved.",
+        )
+
         serializer = AdoptionApplicationSerializer(application, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ApplicationVisitPlanView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        application = generics.get_object_or_404(AdoptionApplication, pk=pk)
+
+        if request.user.id not in {application.applicant_id, application.pet.owner_id}:
+            raise PermissionDenied('You do not have permission to update this visit plan.')
+
+        serializer = VisitPlanUpdateSerializer(application, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        if request.user.id == application.applicant_id:
+            proposed_by = AdoptionApplication.VISIT_PROPOSED_BY_ADOPTER
+            recipient = application.pet.owner
+        else:
+            proposed_by = AdoptionApplication.VISIT_PROPOSED_BY_REHOMER
+            recipient = application.applicant
+
+        application.visit_status = AdoptionApplication.VISIT_PROPOSED
+        application.visit_proposed_by = proposed_by
+        application.visit_confirmed_at = None
+        application.save(update_fields=[
+            'preferred_visit_date',
+            'meeting_preference',
+            'meeting_location_notes',
+            'visit_status',
+            'visit_proposed_by',
+            'visit_confirmed_at',
+            'updated_at',
+        ])
+
+        actor_name = request.user.get_full_name().strip() or request.user.username or request.user.email
+        create_notification(
+            recipient=recipient,
+            actor=request.user,
+            pet=application.pet,
+            application=application,
+            type=Notification.VISIT_PROPOSED,
+            title=f"New visit proposal for {application.pet.name}",
+            message=f"{actor_name} suggested a new meeting plan for {application.pet.name}.",
+        )
+
+        response_serializer = AdoptionApplicationSerializer(application, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+
+class ApplicationVisitPlanAcceptView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        application = generics.get_object_or_404(AdoptionApplication, pk=pk)
+
+        if request.user.id not in {application.applicant_id, application.pet.owner_id}:
+            raise PermissionDenied('You do not have permission to accept this visit plan.')
+
+        if application.visit_status != AdoptionApplication.VISIT_PROPOSED:
+            raise ValidationError('There is no active visit proposal to accept.')
+
+        if (
+            request.user.id == application.applicant_id
+            and application.visit_proposed_by == AdoptionApplication.VISIT_PROPOSED_BY_ADOPTER
+        ) or (
+            request.user.id == application.pet.owner_id
+            and application.visit_proposed_by == AdoptionApplication.VISIT_PROPOSED_BY_REHOMER
+        ):
+            raise ValidationError('Wait for the other person to accept your own proposal.')
+
+        recipient = application.pet.owner if request.user.id == application.applicant_id else application.applicant
+        application.visit_status = AdoptionApplication.VISIT_AGREED
+        application.visit_confirmed_at = timezone.now()
+        application.save(update_fields=['visit_status', 'visit_confirmed_at', 'updated_at'])
+
+        actor_name = request.user.get_full_name().strip() or request.user.username or request.user.email
+        create_notification(
+            recipient=recipient,
+            actor=request.user,
+            pet=application.pet,
+            application=application,
+            type=Notification.VISIT_AGREED,
+            title=f"Visit agreed for {application.pet.name}",
+            message=f"{actor_name} accepted the meeting plan for {application.pet.name}.",
+        )
+
+        response_serializer = AdoptionApplicationSerializer(application, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 
 class WishlistListCreateView(APIView):
@@ -311,6 +742,8 @@ class NotificationListView(generics.ListAPIView):
             'pet',
             'pet__owner',
             'pet__shelter',
+            'application',
+            'conversation',
         ).prefetch_related('pet__images')
 
 
@@ -337,3 +770,159 @@ class NotificationUnreadCountView(APIView):
     def get(self, request):
         unread_count = Notification.objects.filter(recipient=request.user, read=False).count()
         return Response({'count': unread_count}, status=status.HTTP_200_OK)
+
+
+def ensure_community_alias(user):
+    if user.community_alias:
+        return
+    raise ValidationError({'community_alias': 'Choose a community username before posting.'})
+
+
+class CommunityPostListCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        queryset = (
+            CommunityPost.objects.select_related(
+                'author',
+                'repost_of',
+                'repost_of__author',
+            )
+            .prefetch_related(
+                'reactions',
+                'comments',
+                'comments__author',
+                'comments__reactions',
+                'reposts',
+            )
+            .order_by('-created_at')
+        )
+        serializer = CommunityPostSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        if not request.user.is_authenticated:
+            raise PermissionDenied('Log in to post in the community.')
+
+        ensure_community_alias(request.user)
+        serializer = CommunityPostSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(author=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class CommunityCommentCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        ensure_community_alias(request.user)
+        post = generics.get_object_or_404(CommunityPost, pk=pk)
+        serializer = CommunityCommentCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comment = CommunityComment.objects.create(
+            post=post,
+            author=request.user,
+            body=serializer.validated_data['body'],
+            image_url=serializer.validated_data.get('image_url', ''),
+            video_url=serializer.validated_data.get('video_url', ''),
+            sticker=serializer.validated_data.get('sticker', ''),
+        )
+        response_serializer = CommunityCommentSerializer(comment, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class CommunityPostReactionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        post = generics.get_object_or_404(CommunityPost, pk=pk)
+        value = request.data.get('value')
+
+        if value not in {CommunityReaction.LIKE, CommunityReaction.DISLIKE}:
+            raise ValidationError({'value': 'Use like or dislike.'})
+
+        reaction, created = CommunityReaction.objects.get_or_create(
+            user=request.user,
+            post=post,
+            defaults={'value': value},
+        )
+
+        if not created:
+            if reaction.value == value:
+                reaction.delete()
+            else:
+                reaction.value = value
+                reaction.save(update_fields=['value', 'updated_at'])
+
+        serializer = CommunityPostSerializer(post, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class CommunityCommentReactionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        comment = generics.get_object_or_404(CommunityComment, pk=pk)
+        value = request.data.get('value')
+
+        if value not in {CommunityReaction.LIKE, CommunityReaction.DISLIKE}:
+            raise ValidationError({'value': 'Use like or dislike.'})
+
+        reaction, created = CommunityReaction.objects.get_or_create(
+            user=request.user,
+            comment=comment,
+            defaults={'value': value},
+        )
+
+        if not created:
+            if reaction.value == value:
+                reaction.delete()
+            else:
+                reaction.value = value
+                reaction.save(update_fields=['value', 'updated_at'])
+
+        serializer = CommunityCommentSerializer(comment, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class CommunityPostRepostView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        ensure_community_alias(request.user)
+        original_post = generics.get_object_or_404(CommunityPost, pk=pk)
+        body = (request.data.get('body') or '').strip()
+        existing_repost = CommunityPost.objects.filter(
+            author=request.user,
+            repost_of=original_post,
+        ).first()
+
+        if existing_repost:
+            removed_repost_id = existing_repost.id
+            existing_repost.delete()
+            original_serializer = CommunityPostSerializer(original_post, context={'request': request})
+            return Response(
+                {
+                    'reposted': False,
+                    'removed_repost_id': removed_repost_id,
+                    'post': original_serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        repost = CommunityPost.objects.create(
+            author=request.user,
+            body=body,
+            category=original_post.category,
+            repost_of=original_post,
+        )
+        repost_serializer = CommunityPostSerializer(repost, context={'request': request})
+        original_serializer = CommunityPostSerializer(original_post, context={'request': request})
+        return Response(
+            {
+                'reposted': True,
+                'repost': repost_serializer.data,
+                'post': original_serializer.data,
+            },
+            status=status.HTTP_201_CREATED,
+        )

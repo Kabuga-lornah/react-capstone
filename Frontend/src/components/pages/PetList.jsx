@@ -16,6 +16,22 @@ const toTitleCase = (value) =>
 const normalizePersonalityTraits = (traits) =>
   Array.isArray(traits) ? traits.map((trait) => toTitleCase(String(trait))) : [];
 
+const resolvePetType = (pet) => {
+  const baseType = String(pet.type || pet.species || "other").trim().toLowerCase();
+  const customType = String(pet.custom_species || pet.species_label || "").trim();
+  const breedFallback = String(pet.breed || "").trim();
+
+  if (customType) {
+    return customType;
+  }
+
+  if (baseType === "other" && breedFallback) {
+    return breedFallback;
+  }
+
+  return baseType || "other";
+};
+
 const getPetImageUrl = (pet) => {
   const mainImage = pet.images?.find((image) => image.is_main);
   const fallbackImage = pet.images?.[0];
@@ -34,7 +50,7 @@ const getPetImageUrl = (pet) => {
 const normalizePet = (pet) => ({
   ...pet,
   id: String(pet.id),
-  type: pet.type || pet.species || "other",
+  type: resolvePetType(pet),
   personality: pet.personality || normalizePersonalityTraits(pet.personality_traits),
   imageUrl: pet.imageUrl || getPetImageUrl(pet),
 });
@@ -42,7 +58,7 @@ const normalizePet = (pet) => ({
 const getPetTypeValue = (pet) =>
   String(pet.type || pet.species || "other").trim().toLowerCase();
 
-const getPetTypeLabel = (pet) => toTitleCase(pet.type || pet.species || "Other");
+const getPetTypeLabel = (pet) => toTitleCase(resolvePetType(pet));
 const PETS_PER_PAGE = 12;
 
 const getPetStatusLabel = (pet, adoptedPets) => {
@@ -512,12 +528,13 @@ const PetsList = () => {
 
         .pl-pet-card {
           position: relative;
-          background: var(--white);
-          border: 1.5px solid var(--border);
-          border-radius: var(--radius-lg);
+          background: transparent;
+          border: none;
+          border-radius: 0;
           overflow: hidden;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-          box-shadow: 0 12px 28px rgba(28, 18, 7, 0.06);
+          transition: transform 0.2s ease;
+          padding-bottom: 12px;
+          border-bottom: 1px solid rgba(245,154,35,0.14);
         }
 
         .pl-pet-card:active {
@@ -530,7 +547,8 @@ const PetsList = () => {
           height: 170px;
           background: var(--orange-light);
           overflow: hidden;
-          border: none;
+          border: 1px solid rgba(245,154,35,0.1);
+          border-radius: 22px;
           padding: 0;
           cursor: pointer;
           display: block;
@@ -612,7 +630,7 @@ const PetsList = () => {
         }
 
         .pl-pet-body {
-          padding: 12px;
+          padding: 12px 2px 0;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -643,9 +661,9 @@ const PetsList = () => {
         }
 
         .pl-empty {
-          background: var(--white);
-          border: 1.5px solid var(--border);
-          border-radius: var(--radius-lg);
+          background: transparent;
+          border: 1px solid rgba(245,154,35,0.14);
+          border-radius: 22px;
           padding: 32px 20px;
           text-align: center;
           color: var(--text-muted);

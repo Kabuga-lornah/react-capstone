@@ -16,9 +16,13 @@ import Footer from "./components/Footer";
 import ContactUs from "./components/pages/ContactUs";
 import MyListings from "./components/pages/MyListing";
 import RehomerProfile from "./components/pages/RehomerProfile";
+import AdminDashboard from "./components/pages/AdminDashboard";
+import Community from "./components/pages/Community";
+import ChatThread from "./components/pages/ChatThread";
+import UserProfile from "./components/pages/UserProfile";
 
 // ProtectedRoute component remains outside App
-const ProtectedRoute = ({ children, isRehomer = false }) => {
+const ProtectedRoute = ({ children, isRehomer = false, isAdmin = false }) => {
   const { user, userData } = useAuth();
 
   if (!user) {
@@ -26,6 +30,10 @@ const ProtectedRoute = ({ children, isRehomer = false }) => {
   }
 
   if (isRehomer && !userData?.isRehomer && userData?.role !== "shelter_admin") {
+    return <Navigate to="/" replace />;
+  }
+
+  if (isAdmin && userData?.role !== "shelter_admin" && userData?.role !== "platform_admin") {
     return <Navigate to="/" replace />;
   }
 
@@ -55,6 +63,11 @@ function AppWrapper() {
           <Route path="/my-listing" element={<MyListings />} />
           <Route path="/contact" element={<ContactUs />} />
           <Route path="/pet-pouch" element={<PetPouch />} />
+          <Route path="/community" element={<Community />} />
+          <Route path="/profile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
+          <Route path="/chats" element={<ProtectedRoute><ChatThread /></ProtectedRoute>} />
+          <Route path="/chats/pet/:petId" element={<ProtectedRoute><ChatThread /></ProtectedRoute>} />
+          <Route path="/chats/:conversationId" element={<ProtectedRoute><ChatThread /></ProtectedRoute>} />
 
           {/* Protected rehomer routes */}
           <Route path="/rehomer-dashboard" element={
@@ -72,6 +85,12 @@ function AppWrapper() {
           <Route path="/rehomer-profile" element={
             <ProtectedRoute isRehomer={true}>
               <RehomerProfile />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/admin-dashboard" element={
+            <ProtectedRoute isAdmin={true}>
+              <AdminDashboard />
             </ProtectedRoute>
           } />
 
