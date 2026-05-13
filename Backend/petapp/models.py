@@ -339,6 +339,7 @@ class Notification(models.Model):
     WISHLIST_SAVED = 'wishlist_saved'
     CHAT_MESSAGE = 'chat_message'
     APPLICATION_SUBMITTED = 'application_submitted'
+    APPLICATION_WITHDRAWN = 'application_withdrawn'
     APPLICATION_APPROVED = 'application_approved'
     APPLICATION_REJECTED = 'application_rejected'
     VISIT_PROPOSED = 'visit_proposed'
@@ -348,6 +349,7 @@ class Notification(models.Model):
         (WISHLIST_SAVED, 'Wishlist Saved'),
         (CHAT_MESSAGE, 'Chat Message'),
         (APPLICATION_SUBMITTED, 'Application Submitted'),
+        (APPLICATION_WITHDRAWN, 'Application Withdrawn'),
         (APPLICATION_APPROVED, 'Application Approved'),
         (APPLICATION_REJECTED, 'Application Rejected'),
         (VISIT_PROPOSED, 'Visit Proposed'),

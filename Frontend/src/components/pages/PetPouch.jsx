@@ -50,6 +50,10 @@ const getPetProgress = (petId, applications, conversations) => {
     return { label: "Request not approved", tone: "#c53030", bg: "#fff1f1" };
   }
 
+  if (application?.status === "withdrawn") {
+    return { label: "Interest canceled", tone: "#7a6b57", bg: "#f4f1eb" };
+  }
+
   if (application?.visitStatus === "agreed") {
     return { label: "Visit agreed", tone: "#1e7b48", bg: "#edf9ef" };
   }

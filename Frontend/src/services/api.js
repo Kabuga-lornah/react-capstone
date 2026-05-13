@@ -351,6 +351,12 @@ export async function rejectApplication(id) {
   });
 }
 
+export async function withdrawApplication(id) {
+  return apiRequest(`/applications/${id}/withdraw/`, {
+    method: "POST",
+  });
+}
+
 export async function listWishlist() {
   return apiRequest("/wishlist/");
 }
@@ -453,6 +459,7 @@ export default {
   acceptVisitPlan,
   approveApplication,
   rejectApplication,
+  withdrawApplication,
   listWishlist,
   addToWishlist,
   removeFromWishlist,

@@ -9,6 +9,7 @@ from .views import (
     AppTokenObtainPairView,
     ApplicationApproveView,
     ApplicationRejectView,
+    ApplicationWithdrawView,
     ApplicationVisitPlanAcceptView,
     ApplicationVisitPlanView,
     AdoptionApplicationCreateView,
@@ -65,6 +66,7 @@ urlpatterns = [
     path('applications/<int:pk>/visit-plan/accept/', ApplicationVisitPlanAcceptView.as_view(), name='application-visit-plan-accept'),
     path('applications/<int:pk>/approve/', ApplicationApproveView.as_view(), name='application-approve'),
     path('applications/<int:pk>/reject/', ApplicationRejectView.as_view(), name='application-reject'),
+    path('applications/<int:pk>/withdraw/', ApplicationWithdrawView.as_view(), name='application-withdraw'),
 
     path('wishlist/', WishlistListCreateView.as_view(), name='wishlist-list-create'),
     path('wishlist/<int:pk>/', WishlistDeleteView.as_view(), name='wishlist-delete'),

@@ -594,6 +594,36 @@ class ApplicationRejectView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class ApplicationWithdrawView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        application = generics.get_object_or_404(AdoptionApplication, pk=pk)
+
+        if application.applicant != request.user:
+            raise PermissionDenied('You do not have permission to withdraw this application.')
+
+        if application.status != AdoptionApplication.PENDING:
+            raise ValidationError('Only active interest can be canceled.')
+
+        application.status = AdoptionApplication.WITHDRAWN
+        application.save(update_fields=['status', 'updated_at'])
+
+        actor_name = request.user.get_full_name().strip() or request.user.username or request.user.email
+        create_notification(
+            recipient=application.pet.owner,
+            actor=request.user,
+            pet=application.pet,
+            application=application,
+            type=Notification.APPLICATION_WITHDRAWN,
+            title=f"Interest canceled for {application.pet.name}",
+            message=f"{actor_name} is no longer interested in {application.pet.name}.",
+        )
+
+        serializer = AdoptionApplicationSerializer(application, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class ApplicationVisitPlanView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

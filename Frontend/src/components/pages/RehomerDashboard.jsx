@@ -1,13 +1,15 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import Calendar from "react-calendar";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   acceptVisitPlan,
-  approveApplication,
   deletePet,
   getAccessToken,
   listConversations,
+  listNotifications,
   listMyPets,
   listReceivedApplications,
+  markNotificationRead,
   proposeVisitPlan,
   rejectApplication,
 } from "../../services/api";
@@ -192,6 +194,34 @@ const getPresenceText = (profile) => {
   return "Offline";
 };
 
+const formatNotificationTime = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const timestamp = new Date(value);
+  const diffMinutes = Math.max(0, Math.round((Date.now() - timestamp.getTime()) / 60000));
+
+  if (diffMinutes < 1) {
+    return "Just now";
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes} min ago`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} hr ago`;
+  }
+
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 7) {
+    return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+  }
+
+  return timestamp.toLocaleDateString();
+};
+
 const tabToScreen = (tab) => {
   if (tab === "pets" || tab === "requests" || tab === "profile") {
     return tab;
@@ -352,6 +382,106 @@ const SectionHead = ({ title, onSeeAll }) => (
     ) : null}
   </div>
 );
+
+const parseDateValue = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day);
+};
+
+const toIsoDate = (dateValue) => {
+  if (!(dateValue instanceof Date) || Number.isNaN(dateValue.getTime())) {
+    return "";
+  }
+
+  const year = dateValue.getFullYear();
+  const month = String(dateValue.getMonth() + 1).padStart(2, "0");
+  const day = String(dateValue.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateLabel = (value, fallbackLabel = "Choose a date") => {
+  const parsedDate = parseDateValue(value);
+  if (!parsedDate) {
+    return fallbackLabel;
+  }
+
+  return parsedDate.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const ThemedDatePicker = ({
+  value,
+  onChange,
+  ariaLabel,
+  placeholder = "Choose a date",
+  minDate,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const shellRef = useRef(null);
+  const selectedDate = parseDateValue(value);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const handleOutsideClick = (event) => {
+      if (!shellRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isOpen]);
+
+  return (
+    <div className={`rd-date-shell${isOpen ? " is-open" : ""}`} ref={shellRef}>
+      <button
+        type="button"
+        className="rd-date-trigger"
+        aria-label={ariaLabel}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((currentValue) => !currentValue)}
+      >
+        <span>{formatDateLabel(value, placeholder)}</span>
+        <span className="rd-date-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="none">
+            <rect x="3.5" y="4.5" width="13" height="12" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M6.5 2.8v3.4M13.5 2.8v3.4M3.5 8h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </span>
+      </button>
+      {isOpen ? (
+        <div className="rd-date-popover" role="dialog" aria-label={ariaLabel}>
+          <Calendar
+            value={selectedDate}
+            minDate={minDate}
+            next2Label={null}
+            prev2Label={null}
+            onChange={(nextValue) => {
+              const pickedDate = Array.isArray(nextValue) ? nextValue[0] : nextValue;
+              onChange(toIsoDate(pickedDate));
+              setIsOpen(false);
+            }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 const HomeScreen = ({
   stats,
@@ -623,20 +753,22 @@ const PetsScreen = ({ pets, navigate, onDelete, isVerifiedRehomer, verificationS
 
 const RequestsScreen = ({
   requests,
-  onApprove,
   onReject,
   onVisitUpdate,
   onVisitAccept,
-  navigate,
   conversationLookup,
-  conversationIdLookup,
 }) => {
   const [filter, setFilter] = useState("all");
+  const [selectedDate, setSelectedDate] = useState("");
   const [visitEditorId, setVisitEditorId] = useState("");
   const [visitDrafts, setVisitDrafts] = useState({});
   const [visitSavingId, setVisitSavingId] = useState("");
-  const filteredRequests =
-    filter === "all" ? requests : requests.filter((request) => request.status === filter);
+  const filteredRequests = requests.filter((request) => {
+    const matchesStatus = filter === "all" ? true : request.status === filter;
+    const matchesDate = selectedDate ? toIsoDate(new Date(request.createdAt)) === selectedDate : true;
+
+    return matchesStatus && matchesDate;
+  });
 
   const openVisitEditor = (request) => {
     setVisitEditorId(request.id);
@@ -702,22 +834,38 @@ const RequestsScreen = ({
           </button>
         ))}
       </div>
+      <div className="rd-filter-tools">
+        <div className="rd-filter-date">
+          <span>View requests from</span>
+          <ThemedDatePicker
+            value={selectedDate}
+            onChange={setSelectedDate}
+            ariaLabel="Filter requests by date"
+            placeholder="dd/mm/yyyy"
+          />
+        </div>
+        {selectedDate ? (
+          <button
+            type="button"
+            className="rd-filter-date__clear"
+            onClick={() => setSelectedDate("")}
+          >
+            Clear date
+          </button>
+        ) : null}
+      </div>
 
       <div style={{ padding: "0 16px 24px" }}>
         {filteredRequests.length === 0 ? (
           <div className="rd-empty">
             <div className="rd-empty__icon">+</div>
-            <h3>No requests in this category</h3>
+            <h3>No requests match this filter</h3>
             <p>This area will update as adopters apply and you review them.</p>
           </div>
         ) : (
           filteredRequests.map((request) => {
-            const isProcessed = request.status !== "pending";
-            const conversationKey = `${request.petId}-${request.applicantId}`;
             const workflowStage = getRequestWorkflowStage(request);
             const workflowSteps = getWorkflowSteps(request, conversationLookup);
-            const conversationId = conversationIdLookup[conversationKey];
-            const chatTarget = conversationId ? `/chats/${conversationId}` : "/chats";
 
             return (
               <article key={request.id} className="rd-req-full-card">
@@ -725,11 +873,21 @@ const RequestsScreen = ({
                   <div className="rd-req-avatar">{request.userName.charAt(0).toUpperCase()}</div>
                   <div className="rd-req-body">
                     <div className="rd-req-name">{request.userName}</div>
-                    <div className="rd-req-sub">Requested {request.petName}</div>
+                    <div className="rd-req-sub">Wants to adopt {request.petName}</div>
                     <div className="rd-req-sub">
-                      {request.userEmail} · {request.userPhone}
+                      {request.userEmail} {" - "} {request.userPhone || "No phone"}
                     </div>
                   </div>
+                  {request.status === "pending" ? (
+                    <button
+                      type="button"
+                      className="rd-request-close"
+                      onClick={() => onReject(request.id)}
+                      aria-label={`Reject ${request.userName}'s request`}
+                    >
+                      X
+                    </button>
+                  ) : null}
                   <Badge
                     status={
                       workflowStage === "Rejected"
@@ -767,54 +925,19 @@ const RequestsScreen = ({
                   </div>
                 </div>
 
-                <div
-                  className="rd-req-full-card__pet"
-                  onClick={() => navigate(chatTarget)}
-                  role="button"
-                  tabIndex={0}
-                  style={{ cursor: "pointer" }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      navigate(chatTarget);
-                    }
-                  }}
-                >
+                <div className="rd-req-full-card__pet">
                   <img src={request.petImageUrl} alt={request.petName} className="rd-req-full-card__pet-img" />
                   <div className="rd-req-body">
                     <div className="rd-req-name">{request.petName}</div>
                     <div className="rd-req-sub">
-                      {toTitle(request.petType)} · {request.petLocation}
+                      {toTitle(request.petType)} {" - "} {request.petLocation}
                     </div>
-                    <div className="rd-req-sub">
-                      {toTitle(request.petType)} · {request.petLocation}
-                    </div>
-                     <div className="rd-req-sub">
-                       Visit date:{" "}
-                       {request.visitDate
-                         ? new Date(request.visitDate).toLocaleDateString()
-                         : "Not provided"}
-                     </div>
-                     {request.meetingPreference ? (
-                       <div className="rd-req-sub">
-                         {meetingPreferenceLabel[request.meetingPreference] || request.meetingPreference}
-                       </div>
-                     ) : null}
-                     {request.visitStatus !== "not_started" ? (
-                       <div className="rd-req-sub" style={{ color: "#A85F00", fontWeight: 800 }}>
-                         {request.visitStatus === "agreed"
-                           ? "Visit agreed"
-                           : request.visitProposedBy === "adopter"
-                             ? "Adopter proposed this time"
-                             : "You proposed this time"}
-                       </div>
-                     ) : null}
-                   </div>
-                 </div>
+                  </div>
+                </div>
 
                 <div className="rd-request-meta">
                   <div className="rd-request-meta__item">
-                    <strong>Requested on</strong>
+                    <strong>Pet requested on</strong>
                     <span>
                       {request.createdAt
                         ? new Date(request.createdAt).toLocaleDateString()
@@ -849,13 +972,13 @@ const RequestsScreen = ({
 
                  {visitEditorId === request.id ? (
                    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                     <input
-                       type="date"
+                     <ThemedDatePicker
                        value={visitDrafts[request.id]?.preferredVisitDate || ""}
-                       onChange={(event) =>
-                         updateVisitDraft(request.id, { preferredVisitDate: event.target.value })
+                       onChange={(nextValue) =>
+                         updateVisitDraft(request.id, { preferredVisitDate: nextValue })
                        }
-                       className="rd-visit-input"
+                       ariaLabel={`Choose a visit date for ${request.userName}`}
+                       minDate={new Date()}
                      />
                      <select
                        value={visitDrafts[request.id]?.meetingPreference || ""}
@@ -897,44 +1020,30 @@ const RequestsScreen = ({
                    </div>
                  ) : null}
 
-                 <div className="rd-req-full-card__actions">
-                   {request.visitStatus === "proposed" && request.visitProposedBy === "adopter" ? (
-                     <button
-                       type="button"
-                       className="rd-btn rd-btn--soft"
-                       onClick={() => acceptVisit(request.id)}
-                       disabled={visitSavingId === request.id}
-                     >
-                       {visitSavingId === request.id ? "Saving..." : "Accept visit"}
-                     </button>
-                   ) : null}
-                   {request.status === "pending" ? (
-                     <button
-                       type="button"
-                       className="rd-btn rd-btn--ghost"
-                       onClick={() => openVisitEditor(request)}
-                     >
-                       {request.visitStatus === "not_started" ? "Propose visit" : "Suggest another time"}
-                     </button>
-                   ) : null}
-                   <button
-                     type="button"
-                     className="rd-btn rd-btn--primary"
-                    onClick={() => onApprove(request.petId, request.id)}
-                    disabled={isProcessed}
-                  >
-                    Approve
-                    <span className="rd-btn__shine" />
-                  </button>
-                  <button
-                    type="button"
-                    className="rd-btn rd-btn--danger"
-                    onClick={() => onReject(request.id)}
-                    disabled={isProcessed}
-                  >
-                    Reject
-                  </button>
-                </div>
+                 {request.status === "pending" ||
+                 (request.visitStatus === "proposed" && request.visitProposedBy === "adopter") ? (
+                   <div className="rd-req-full-card__actions">
+                     {request.visitStatus === "proposed" && request.visitProposedBy === "adopter" ? (
+                       <button
+                         type="button"
+                         className="rd-btn rd-btn--soft"
+                         onClick={() => acceptVisit(request.id)}
+                         disabled={visitSavingId === request.id}
+                       >
+                         {visitSavingId === request.id ? "Saving..." : "Accept visit"}
+                       </button>
+                     ) : null}
+                     {request.status === "pending" ? (
+                       <button
+                         type="button"
+                         className="rd-btn rd-btn--ghost"
+                         onClick={() => openVisitEditor(request)}
+                       >
+                         {request.visitStatus === "not_started" ? "Propose visit" : "Suggest another time"}
+                       </button>
+                     ) : null}
+                  </div>
+                 ) : null}
               </article>
             );
           })
@@ -1090,6 +1199,9 @@ const RehomerDashboard = () => {
   const [screen, setScreenState] = useState(tabToScreen(searchParams.get("tab")));
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
   const hasToken = Boolean(getAccessToken());
   const isAllowed = userData?.role === "rehomer" || userData?.role === "shelter_admin";
@@ -1123,10 +1235,11 @@ const RehomerDashboard = () => {
       try {
         setLoading(true);
         setError("");
-        const [petResponse, requestResponse, conversationResponse] = await Promise.all([
+        const [petResponse, requestResponse, conversationResponse, notificationResponse] = await Promise.all([
           listMyPets(),
           listReceivedApplications(),
           listConversations(),
+          listNotifications().catch(() => []),
         ]);
 
         const petResults = Array.isArray(petResponse) ? petResponse : petResponse?.results || [];
@@ -1136,10 +1249,18 @@ const RehomerDashboard = () => {
         const conversationResults = Array.isArray(conversationResponse)
           ? conversationResponse
           : conversationResponse?.results || [];
+        const notificationResults = Array.isArray(notificationResponse)
+          ? notificationResponse
+          : notificationResponse?.results || [];
 
         setPets(petResults.map(normalizePet));
-        setRequests(requestResults.map(normalizeApplication));
+        setRequests(
+          requestResults
+            .map(normalizeApplication)
+            .filter((request) => request.status !== "withdrawn"),
+        );
         setConversations(conversationResults);
+        setNotifications(notificationResults);
       } catch (fetchError) {
         setError(fetchError.message || "Failed to load dashboard.");
       } finally {
@@ -1170,6 +1291,11 @@ const RehomerDashboard = () => {
     navigate(location.pathname, { replace: true });
   }, [location.pathname, location.state, navigate]);
 
+  const unreadNotificationCount = useMemo(
+    () => notifications.filter((notification) => !notification.read).length,
+    [notifications],
+  );
+
   const stats = useMemo(
     () => ({
       totalPets: pets.length,
@@ -1180,7 +1306,6 @@ const RehomerDashboard = () => {
     [pets, requests],
   );
 
-  const recentRequests = useMemo(() => requests.slice(0, 3), [requests]);
   const adoptionHistory = useMemo(
     () => requests.filter((request) => request.status === "approved"),
     [requests],
@@ -1199,50 +1324,13 @@ const RehomerDashboard = () => {
       }, {}),
     [conversations],
   );
-  const conversationIdLookup = useMemo(
-    () =>
-      conversations.reduce((lookup, conversation) => {
-        const petId = conversation?.pet?.id ? String(conversation.pet.id) : "";
-        const adopterId = conversation?.adopter ? String(conversation.adopter) : "";
-
-        if (petId && adopterId) {
-          lookup[`${petId}-${adopterId}`] = String(conversation.id);
-        }
-
-        return lookup;
-      }, {}),
-    [conversations],
-  );
-
-  const handleApprove = async (petId, requestId) => {
-    try {
-      setError("");
-      await approveApplication(requestId);
-      setPets((currentPets) =>
-        currentPets.map((pet) =>
-          pet.id === petId ? { ...pet, adopted: true, status: "adopted" } : pet,
-        ),
-      );
-      setRequests((currentRequests) =>
-        currentRequests.map((request) => {
-          if (request.id === requestId) {
-            return { ...request, status: "approved" };
-          }
-
-          if (request.petId === petId && request.status === "pending") {
-            return { ...request, status: "rejected" };
-          }
-
-          return request;
-        }),
-      );
-      setSuccess("Adoption approved.");
-    } catch (approveError) {
-      setError(approveError.message || "Failed to approve.");
-    }
-  };
-
   const handleReject = async (requestId) => {
+    const confirmed = window.confirm("Are you sure you want to reject this request?");
+
+    if (!confirmed) {
+      return;
+    }
+
     try {
       setError("");
       await rejectApplication(requestId);
@@ -1313,6 +1401,51 @@ const RehomerDashboard = () => {
     }
   };
 
+  const handleOpenNotifications = async () => {
+    try {
+      setNotificationsOpen(true);
+      setNotificationsLoading(true);
+      const response = await listNotifications();
+      const results = Array.isArray(response) ? response : response?.results || [];
+      setNotifications(results);
+    } catch (notificationError) {
+      setError(notificationError.message || "Failed to load alerts.");
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  const handleNotificationClick = async (notification) => {
+    try {
+      if (!notification.read) {
+        await markNotificationRead(notification.id);
+        setNotifications((currentNotifications) =>
+          currentNotifications.map((item) =>
+            item.id === notification.id ? { ...item, read: true } : item,
+          ),
+        );
+      }
+    } catch (notificationError) {
+      console.error("Error marking notification as read:", notificationError);
+    }
+
+    setNotificationsOpen(false);
+
+    if (notification.conversation_id) {
+      navigate(`/chats/${notification.conversation_id}`);
+      return;
+    }
+
+    if (notification.type?.startsWith("application_") || notification.type?.startsWith("visit_")) {
+      setScreen("requests");
+      return;
+    }
+
+    if (notification.pet?.id) {
+      navigate(`/pet/${notification.pet.id}`);
+    }
+  };
+
   if (!authLoading && hasToken && !isAllowed) {
     return (
       <div className="rd-shell">
@@ -1342,13 +1475,13 @@ const RehomerDashboard = () => {
           <button
             type="button"
             className="rd-notif-btn"
-            onClick={() => setScreen("requests")}
+            onClick={handleOpenNotifications}
             aria-label="Open alerts"
           >
             <div style={{ width: 16, height: 16 }}>
               <IconBell />
             </div>
-            {stats.pendingRequests > 0 ? <span className="rd-notif-dot" /> : null}
+            {unreadNotificationCount > 0 ? <span className="rd-notif-dot" /> : null}
           </button>
           <button
             type="button"
@@ -1383,13 +1516,10 @@ const RehomerDashboard = () => {
           {screen === "home" || screen === "requests" ? (
               <RequestsScreen
                 requests={requests}
-                onApprove={handleApprove}
                 onReject={handleReject}
                 onVisitUpdate={handleVisitUpdate}
                 onVisitAccept={handleVisitAccept}
-                navigate={navigate}
                 conversationLookup={conversationLookup}
-                conversationIdLookup={conversationIdLookup}
               />
           ) : null}
 
@@ -1434,6 +1564,57 @@ const RehomerDashboard = () => {
               >
                 {isDeleting ? "Deleting..." : "Delete"}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {notificationsOpen ? (
+        <div className="rd-modal-overlay" role="presentation" onClick={() => setNotificationsOpen(false)}>
+          <div
+            className="rd-modal rd-modal--notifications"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rd-alerts-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="rd-notifications-head">
+              <div>
+                <h3 id="rd-alerts-title">Alerts</h3>
+                <p>Updates about interests, visits, and replies.</p>
+              </div>
+              <button
+                type="button"
+                className="rd-btn rd-btn--ghost"
+                onClick={() => setNotificationsOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="rd-notifications-list">
+              {notificationsLoading ? (
+                <div className="rd-notifications-state">Loading alerts...</div>
+              ) : notifications.length === 0 ? (
+                <div className="rd-notifications-state">No alerts yet.</div>
+              ) : (
+                notifications.map((notification) => (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    className={`rd-notification-item${notification.read ? "" : " rd-notification-item--unread"}`}
+                    onClick={() => handleNotificationClick(notification)}
+                  >
+                    <div className="rd-notification-topline">
+                      <span className="rd-notification-title">{notification.title}</span>
+                      <span className="rd-notification-time">
+                        {formatNotificationTime(notification.created_at)}
+                      </span>
+                    </div>
+                    <div className="rd-notification-message">{notification.message}</div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>

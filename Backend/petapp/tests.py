@@ -587,6 +587,38 @@ class PetApiFlowTests(APITestCase):
         application.refresh_from_db()
         self.assertEqual(application.status, AdoptionApplication.REJECTED)
 
+    def test_adopter_can_withdraw_application(self):
+        application = AdoptionApplication.objects.create(
+            pet=self.pet,
+            applicant=self.adopter,
+            message="Interested.",
+        )
+        self.authenticate(self.adopter.username, self.password)
+
+        response = self.client.post(reverse("application-withdraw", args=[application.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        application.refresh_from_db()
+        self.assertEqual(application.status, AdoptionApplication.WITHDRAWN)
+        notification = Notification.objects.get(
+            recipient=self.rehomer,
+            application=application,
+            type=Notification.APPLICATION_WITHDRAWN,
+        )
+        self.assertIn("no longer interested", notification.message)
+
+    def test_only_applicant_can_withdraw_application(self):
+        application = AdoptionApplication.objects.create(
+            pet=self.pet,
+            applicant=self.adopter,
+            message="Interested.",
+        )
+        self.authenticate(self.other_adopter.username, self.password)
+
+        response = self.client.post(reverse("application-withdraw", args=[application.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, response.data)
+
     def test_authenticated_user_can_save_pet_to_wishlist(self):
         self.authenticate(self.adopter.username, self.password)
 

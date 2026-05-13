@@ -55,6 +55,10 @@ const normalizeApplication = (application) => {
 };
 
 const getRequestStage = (request, conversationMap) => {
+  if (request.status === "withdrawn") {
+    return "withdrawn";
+  }
+
   if (request.status === "rejected") {
     return "rejected";
   }
@@ -86,6 +90,7 @@ const statusTone = {
   pending: { bg: "#fff4df", color: "#c16f00" },
   approved: { bg: "#edf9ef", color: "#1e7b48" },
   rejected: { bg: "#fff1f1", color: "#c53030" },
+  withdrawn: { bg: "#f4f1eb", color: "#7a6b57" },
 };
 
 const stageTone = {
@@ -94,15 +99,17 @@ const stageTone = {
   visit_proposed: { bg: "#fff4df", color: "#c16f00" },
   approved: { bg: "#edf9ef", color: "#1e7b48" },
   rejected: { bg: "#fff1f1", color: "#c53030" },
+  withdrawn: { bg: "#f4f1eb", color: "#7a6b57" },
 };
 
 const stageLabel = {
-  requested: "Request sent",
+  requested: "Interested",
   chatting: "Chatting",
   visit_proposed: "Visit proposed",
   visit_agreed: "Visit agreed",
   approved: "Approved",
   rejected: "Rejected",
+  withdrawn: "Canceled",
 };
 
 const requestJourney = ["requested", "chatting", "visit_proposed", "visit_agreed", "approved"];
@@ -277,7 +284,7 @@ const MyListings = () => {
       </div>
 
       <div style={styles.filters}>
-        {["all", "pending", "approved", "rejected"].map((filter) => (
+        {["all", "pending", "approved", "rejected", "withdrawn"].map((filter) => (
           <button
             key={filter}
             type="button"
@@ -298,7 +305,7 @@ const MyListings = () => {
       {!loading && !error && requestsWithStage.length === 0 ? (
         <div style={styles.emptyCard}>
           <p style={styles.emptyTitle}>No requests here yet.</p>
-          <p style={styles.emptyCopy}>Once you apply for a pet, it will show up here.</p>
+          <p style={styles.emptyCopy}>Once you mark interest in a pet, it will show up here.</p>
         </div>
       ) : null}
 
@@ -326,8 +333,9 @@ const MyListings = () => {
                 {requestJourney.map((step, index) => {
                   const currentIndex = requestJourney.indexOf(request.stage);
                   const stepIndex = requestJourney.indexOf(step);
-                  const isDone = request.stage !== "rejected" && stepIndex < currentIndex;
-                  const isCurrent = request.stage !== "rejected" && stepIndex === currentIndex;
+                  const isTerminal = ["rejected", "withdrawn"].includes(request.stage);
+                  const isDone = !isTerminal && stepIndex < currentIndex;
+                  const isCurrent = !isTerminal && stepIndex === currentIndex;
 
                   return (
                     <React.Fragment key={`${request.id}-${step}`}>
@@ -346,11 +354,11 @@ const MyListings = () => {
                     </React.Fragment>
                   );
                 })}
-                {request.stage === "rejected" ? (
+                {["rejected", "withdrawn"].includes(request.stage) ? (
                   <>
                     <span style={styles.stageArrow}>→</span>
                     <span style={{ ...styles.stageText, ...styles.stageTextRejected }}>
-                      Rejected
+                      {request.stage === "withdrawn" ? "Canceled" : "Rejected"}
                     </span>
                   </>
                 ) : null}
