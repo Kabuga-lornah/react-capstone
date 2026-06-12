@@ -1,5 +1,6 @@
 import { Link, router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,6 +16,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/auth";
 import { API_BASE_URL, clearTokens, getCurrentUser, loginUser } from "@/lib/api";
+import { signInWithGoogle } from "@/lib/googleAuth";
+import { hasSeenOnboarding } from "@/lib/onboarding";
 
 type LoginType = "user" | "rehomer";
 type MessageState = { type: "" | "success" | "error"; text: string };
@@ -62,18 +65,58 @@ export default function LoginScreen() {
   const [email, setEmail] = useState(typeof params.email === "string" ? params.email : "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true);
   const [message, setMessage] = useState<MessageState>(
     typeof params.successMessage === "string"
       ? { type: "success", text: params.successMessage }
       : { type: "", text: "" },
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   const currentBaseUrl = useMemo(() => API_BASE_URL, []);
 
   React.useEffect(() => {
     setType(initialType);
   }, [initialType]);
+
+  React.useEffect(() => {
+    let isActive = true;
+
+    const checkOnboarding = async () => {
+      try {
+        const seenOnboarding = await hasSeenOnboarding();
+
+        if (!isActive) {
+          return;
+        }
+
+        if (!seenOnboarding) {
+          router.replace("/welcome");
+          return;
+        }
+      } finally {
+        if (isActive) {
+          setIsCheckingOnboarding(false);
+        }
+      }
+    };
+
+    void checkOnboarding();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  if (isCheckingOnboarding) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator color="#F18700" size="large" />
+        <Text style={styles.loadingText}>Preparing your welcome experience...</Text>
+      </View>
+    );
+  }
 
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {
@@ -125,6 +168,54 @@ export default function LoginScreen() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setMessage({ type: "", text: "" });
+    setIsGoogleSubmitting(true);
+
+    try {
+      const expectedRole = mapRouteTypeToRole(type);
+      const response = await signInWithGoogle(expectedRole as "adopter" | "rehomer");
+      const profile = response.user;
+
+      if (!profile) {
+        throw new Error("Google login finished, but no profile was returned.");
+      }
+
+      if (isAdminRole(profile.role)) {
+        setAuthenticatedUser(profile, {
+          access: response.access,
+          refresh: response.refresh,
+        });
+        router.replace(getRedirectPath(profile.role));
+        return;
+      }
+
+      if (profile.role !== expectedRole) {
+        clearTokens();
+        setMessage({
+          type: "error",
+          text: `Please login through the ${
+            profile.role === "rehomer" ? "rehomer" : "user"
+          } login page.`,
+        });
+        return;
+      }
+
+      setAuthenticatedUser(profile, {
+        access: response.access,
+        refresh: response.refresh,
+      });
+      router.replace(getRedirectPath(profile.role));
+    } catch (error: any) {
+      setMessage({
+        type: "error",
+        text: error?.message || "Google login failed. Please try again.",
+      });
+    } finally {
+      setIsGoogleSubmitting(false);
     }
   };
 
@@ -264,8 +355,18 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              <Pressable style={styles.googleButton}>
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              <Pressable
+                disabled={isGoogleSubmitting}
+                onPress={handleGoogleLogin}
+                style={({ pressed }) => [
+                  styles.googleButton,
+                  pressed && !isGoogleSubmitting ? styles.googleButtonPressed : null,
+                  isGoogleSubmitting ? styles.googleButtonDisabled : null,
+                ]}
+              >
+                <Text style={styles.googleButtonText}>
+                  {isGoogleSubmitting ? "Connecting to Google..." : "Continue with Google"}
+                </Text>
               </Pressable>
 
               <Text style={styles.footerText}>
@@ -281,6 +382,15 @@ export default function LoginScreen() {
                 </Link>
               </Text>
 
+              <Pressable onPress={() => router.push("/welcome")} style={styles.helperButton}>
+                <MaterialCommunityIcons
+                  color="#C16D00"
+                  name="map-marker-path"
+                  size={16}
+                />
+                <Text style={styles.helperButtonText}>See how the app works</Text>
+              </Pressable>
+
               <Text style={styles.devHint}>
                 Mobile API target: {currentBaseUrl}
               </Text>
@@ -293,6 +403,20 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: "#FFF8EE",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    gap: 14,
+  },
+  loadingText: {
+    color: "#8E6A40",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   screen: {
     flex: 1,
     backgroundColor: "#FFF8EE",
@@ -526,6 +650,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  googleButtonPressed: {
+    transform: [{ scale: 0.99 }],
+  },
+  googleButtonDisabled: {
+    opacity: 0.7,
+  },
   googleButtonText: {
     color: "#2A1500",
     fontSize: 14,
@@ -539,6 +669,24 @@ const styles = StyleSheet.create({
   },
   footerLink: {
     color: "#E07800",
+    fontWeight: "800",
+  },
+  helperButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(225,120,0,0.18)",
+    backgroundColor: "rgba(255,245,225,0.95)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  helperButtonText: {
+    color: "#C16D00",
+    fontSize: 13,
     fontWeight: "800",
   },
   devHint: {

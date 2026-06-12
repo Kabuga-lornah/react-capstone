@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { registerUser } from "../../services/api";
+import GoogleAuthButton from "./GoogleAuthButton";
 
 if (typeof document !== "undefined" && !document.getElementById("ff-fonts")) {
   const link = document.createElement("link");
@@ -377,10 +378,10 @@ const Signup = () => {
           <div style={s.orLine} />
         </div>
 
-        <button style={s.googleBtn}>
+        <GoogleAuthButton routeType={type} style={s.googleBtn}>
           <GoogleIcon />
           Continue with Google
-        </button>
+        </GoogleAuthButton>
 
         <div style={s.footerLinks}>
           Already have an account?{" "}

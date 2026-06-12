@@ -227,6 +227,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
+class GoogleAuthSerializer(serializers.Serializer):
+    id_token = serializers.CharField()
+    role = serializers.ChoiceField(
+        choices=[CustomUser.ADOPTER, CustomUser.REHOMER],
+        required=False,
+        default=CustomUser.ADOPTER,
+    )
+
+
 class AppTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):

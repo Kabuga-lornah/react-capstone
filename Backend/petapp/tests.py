@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from datetime import timedelta
+from unittest.mock import patch
 
 from .models import AdoptionApplication, Conversation, Notification, Pet, PetImage, PetWishlist
 
@@ -172,6 +173,53 @@ class PetApiFlowTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertIn("access", response.data)
         self.assertIn("refresh", response.data)
+
+    @patch("petapp.views.verify_google_id_token")
+    def test_google_login_creates_user_and_returns_tokens(self, mock_verify_google_id_token):
+        mock_verify_google_id_token.return_value = {
+            "aud": "web-client-id",
+            "email": "googleuser@example.com",
+            "email_verified": "true",
+            "given_name": "Google",
+            "family_name": "User",
+            "picture": "https://example.com/google-user.jpg",
+        }
+
+        with self.settings(GOOGLE_OAUTH_CLIENT_IDS=("web-client-id",)):
+            response = self.client.post(
+                reverse("auth-google"),
+                {"id_token": "google-id-token", "role": "rehomer"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertIn("access", response.data)
+        self.assertIn("refresh", response.data)
+        self.assertEqual(response.data["user"]["email"], "googleuser@example.com")
+        self.assertEqual(response.data["user"]["role"], "rehomer")
+        self.assertTrue(User.objects.filter(email="googleuser@example.com").exists())
+
+    @patch("petapp.views.verify_google_id_token")
+    def test_google_login_reuses_existing_user_by_email(self, mock_verify_google_id_token):
+        mock_verify_google_id_token.return_value = {
+            "aud": "web-client-id",
+            "email": self.adopter.email,
+            "email_verified": "true",
+            "given_name": "Updated",
+            "family_name": "Name",
+        }
+
+        with self.settings(GOOGLE_OAUTH_CLIENT_IDS=("web-client-id",)):
+            response = self.client.post(
+                reverse("auth-google"),
+                {"id_token": "google-id-token", "role": "rehomer"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.adopter.refresh_from_db()
+        self.assertEqual(response.data["user"]["id"], self.adopter.id)
+        self.assertEqual(response.data["user"]["role"], "adopter")
 
     def test_current_user_profile(self):
         self.authenticate(self.rehomer.username, self.password)

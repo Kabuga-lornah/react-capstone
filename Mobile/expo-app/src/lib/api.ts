@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import * as Device from "expo-device";
 import { Platform } from "react-native";
 
 const ACCESS_TOKEN_KEY = "pet_adoption_access_token";
@@ -8,23 +9,51 @@ let accessTokenMemory: string | null = null;
 let refreshTokenMemory: string | null = null;
 let refreshPromise: Promise<string | null> | null = null;
 
-const getExpoHost = () => {
-  const manifestHost =
-    Constants.expoConfig?.hostUri ||
-    (Constants as any)?.manifest2?.extra?.expoClient?.hostUri ||
-    "";
+const buildNetworkError = () =>
+  new ApiError(
+    `Unable to reach the API at ${API_BASE_URL}. If you're using a physical phone, start Django with 0.0.0.0:8000 and set EXPO_PUBLIC_API_URL to your computer's LAN address.`,
+    0,
+  );
 
-  if (!manifestHost) {
-    return Platform.OS === "android" ? "10.0.2.2" : "127.0.0.1";
+const extractHost = (value: string) => {
+  if (!value) {
+    return "";
   }
 
-  return manifestHost.split(":")[0];
+  return value
+    .replace(/^\w+:\/\//, "")
+    .split(/[/:]/)[0]
+    .trim();
 };
 
-const DEV_API_HOST = getExpoHost();
-export const API_BASE_URL = __DEV__
-  ? `http://${DEV_API_HOST}:8000/api`
-  : "http://127.0.0.1:8000/api";
+const getExpoHost = () => {
+  const expoConfigHost = extractHost(Constants.expoConfig?.hostUri || "");
+  const manifest2Host = extractHost((Constants as any)?.manifest2?.extra?.expoClient?.hostUri || "");
+  const debuggerHost = extractHost((Constants as any)?.manifest?.debuggerHost || "");
+
+  return expoConfigHost || manifest2Host || debuggerHost || "";
+};
+
+const getDefaultDevHost = () => {
+  if (Platform.OS === "android") {
+    return Device.isDevice ? getExpoHost() || "127.0.0.1" : "10.0.2.2";
+  }
+
+  return "127.0.0.1";
+};
+
+const getDevApiBaseUrl = () => {
+  const explicitBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+
+  if (explicitBaseUrl) {
+    return explicitBaseUrl.replace(/\/+$/, "");
+  }
+
+  const host = getDefaultDevHost();
+  return `http://${host}:8000/api`;
+};
+
+export const API_BASE_URL = __DEV__ ? getDevApiBaseUrl() : "http://127.0.0.1:8000/api";
 
 export class ApiError extends Error {
   status: number;
@@ -177,13 +206,19 @@ async function refreshAccessToken() {
   }
 
   refreshPromise = (async () => {
-    const response = await fetch(buildUrl("/auth/token/refresh/"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ refresh }),
-    });
+    let response: Response;
+
+    try {
+      response = await fetch(buildUrl("/auth/token/refresh/"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refresh }),
+      });
+    } catch {
+      throw buildNetworkError();
+    }
 
     const data = await parseResponse(response);
 
@@ -229,11 +264,17 @@ export async function apiRequest(
     requestHeaders.Authorization = `Bearer ${accessToken}`;
   }
 
-  const response = await fetch(buildUrl(path, params), {
-    method,
-    headers: requestHeaders,
-    body: data !== undefined ? JSON.stringify(data) : undefined,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(buildUrl(path, params), {
+      method,
+      headers: requestHeaders,
+      body: data !== undefined ? JSON.stringify(data) : undefined,
+    });
+  } catch {
+    throw buildNetworkError();
+  }
 
   const responseData = await parseResponse(response);
 
@@ -283,8 +324,35 @@ export async function loginUser(data: { username: string; password: string }) {
   return response;
 }
 
+export async function loginWithGoogle(data: { id_token: string; role?: string }) {
+  const response = await apiRequest("/auth/google/", {
+    method: "POST",
+    data,
+  });
+
+  if (response?.access && response?.refresh) {
+    setTokens(response.access, response.refresh);
+  }
+
+  return response;
+}
+
 export async function getCurrentUser() {
   return apiRequest("/auth/me/");
+}
+
+export async function updateCurrentUser(data: {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone_number?: string;
+  community_alias?: string;
+  profile_photo_url?: string;
+}) {
+  return apiRequest("/auth/me/", {
+    method: "PATCH",
+    data,
+  });
 }
 
 export async function registerUser(data: {
@@ -310,6 +378,12 @@ export async function listMyPets() {
   return apiRequest("/pets/my/");
 }
 
+export async function deletePet(id: string | number) {
+  return apiRequest(`/pets/${id}/`, {
+    method: "DELETE",
+  });
+}
+
 export async function getPetDetail(id: string | number) {
   return apiRequest(`/pets/${id}/`);
 }
@@ -322,6 +396,12 @@ export async function addToWishlist(petId: string | number) {
   return apiRequest("/wishlist/", {
     method: "POST",
     data: { pet_id: Number(petId) },
+  });
+}
+
+export async function removeFromWishlist(id: string | number) {
+  return apiRequest(`/wishlist/${id}/`, {
+    method: "DELETE",
   });
 }
 
@@ -355,6 +435,20 @@ export async function withdrawApplication(id: string | number) {
 export async function rejectApplication(id: string | number) {
   return apiRequest(`/applications/${id}/reject/`, {
     method: "POST",
+  });
+}
+
+export async function proposeVisitPlan(
+  id: string | number,
+  data: {
+    preferred_visit_date?: string;
+    meeting_preference?: string;
+    meeting_location_notes?: string;
+  },
+) {
+  return apiRequest(`/applications/${id}/visit-plan/`, {
+    method: "POST",
+    data,
   });
 }
 
@@ -401,4 +495,55 @@ export async function markNotificationRead(id: string | number) {
 
 export async function getUnreadNotificationCount() {
   return apiRequest("/notifications/unread-count/");
+}
+
+export async function listCommunityPosts() {
+  return apiRequest("/community/posts/");
+}
+
+export async function createCommunityPost(data: {
+  body?: string;
+  image_url?: string;
+  category?: string;
+}) {
+  return apiRequest("/community/posts/", {
+    method: "POST",
+    data,
+  });
+}
+
+export async function createCommunityComment(
+  postId: string | number,
+  data: {
+    body?: string;
+    image_url?: string;
+    video_url?: string;
+    sticker?: string;
+  },
+) {
+  return apiRequest(`/community/posts/${postId}/comments/`, {
+    method: "POST",
+    data,
+  });
+}
+
+export async function reactToCommunityPost(postId: string | number, value: "like" | "dislike") {
+  return apiRequest(`/community/posts/${postId}/reaction/`, {
+    method: "POST",
+    data: { value },
+  });
+}
+
+export async function reactToCommunityComment(commentId: string | number, value: "like" | "dislike") {
+  return apiRequest(`/community/comments/${commentId}/reaction/`, {
+    method: "POST",
+    data: { value },
+  });
+}
+
+export async function repostCommunityPost(postId: string | number, data: { body?: string } = {}) {
+  return apiRequest(`/community/posts/${postId}/repost/`, {
+    method: "POST",
+    data,
+  });
 }

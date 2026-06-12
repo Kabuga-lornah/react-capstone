@@ -223,19 +223,19 @@ const formatNotificationTime = (value) => {
 };
 
 const tabToScreen = (tab) => {
-  if (tab === "pets" || tab === "requests" || tab === "profile") {
+  if (tab === "home" || tab === "pets" || tab === "requests" || tab === "profile") {
     return tab;
   }
 
-  return "requests";
+  return "home";
 };
 
 const screenToTab = (screen) => {
-  if (screen === "pets" || screen === "requests" || screen === "profile") {
+  if (screen === "home" || screen === "pets" || screen === "requests" || screen === "profile") {
     return screen;
   }
 
-  return "requests";
+  return "home";
 };
 
 const getPetTypeLabel = (pet) => pet.breed || toTitle(resolvePetType(pet));
@@ -298,13 +298,6 @@ const IconPerson = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="12" cy="8" r="4" />
     <path d="M5 20a7 7 0 0 1 14 0" />
-  </svg>
-);
-
-const IconPlus = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M12 5v14" />
-    <path d="M5 12h14" />
   </svg>
 );
 
@@ -386,6 +379,15 @@ const SectionHead = ({ title, onSeeAll }) => (
 const parseDateValue = (value) => {
   if (!value) {
     return null;
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  const timestamp = new Date(value);
+  if (!Number.isNaN(timestamp.getTime())) {
+    return timestamp;
   }
 
   const [year, month, day] = String(value).split("-").map(Number);
@@ -484,116 +486,83 @@ const ThemedDatePicker = ({
 };
 
 const HomeScreen = ({
+  userData,
   stats,
-  recentRequests,
+  requests,
+  notifications,
   navigate,
   setScreen,
+  handleOpenNotifications,
+  onNotificationClick,
   isVerifiedRehomer,
   verificationStatus,
+  presenceText,
+  unreadNotificationCount,
 }) => {
   const tip = dailyTips[new Date().getDay() % dailyTips.length];
-  const quickActions = isVerifiedRehomer
-    ? [
-        {
-          id: "add-pet",
-          icon: <IconPlus />,
-          iconClass: "rd-icon--orange",
-          label: "Add a pet",
-          sub: "Create listing",
-          onClick: () => navigate("/add-pet"),
-        },
-        {
-          id: "my-pets",
-          icon: <IconPaw />,
-          iconClass: "rd-icon--peach",
-          label: "My listings",
-          sub: `${stats.totalPets} stored`,
-          onClick: () => setScreen("pets"),
-        },
-        {
-          id: "requests",
-          icon: <IconMail />,
-          iconClass: "rd-icon--cream",
-          label: "Requests",
-          sub: `${stats.pendingRequests} pending`,
-          onClick: () => setScreen("requests"),
-        },
-        {
-          id: "chats",
-          icon: <IconMail />,
-          iconClass: "rd-icon--soft",
-          label: "Chats",
-          sub: "Open inbox",
-          onClick: () => navigate("/chats"),
-        },
-        {
-          id: "public",
-          icon: <IconEye />,
-          iconClass: "rd-icon--cream",
-          label: "Public view",
-          sub: "Browse pets",
-          onClick: () => navigate("/pets"),
-        },
-      ]
-    : [
-        {
-          id: "verification",
-          icon: <IconShield />,
-          iconClass: "rd-icon--orange",
-          label: "Verification",
-          sub: verificationStatus === "pending" ? "Pending review" : "Complete profile",
-          onClick: () => navigate("/rehomer-profile"),
-        },
-        {
-          id: "my-pets",
-          icon: <IconPaw />,
-          iconClass: "rd-icon--peach",
-          label: "My listings",
-          sub: verificationStatus === "pending" ? "Pending approval" : "Locked for now",
-          onClick: () => setScreen("pets"),
-        },
-        {
-          id: "requests",
-          icon: <IconMail />,
-          iconClass: "rd-icon--cream",
-          label: "Requests",
-          sub: `${stats.pendingRequests} pending`,
-          onClick: () => setScreen("requests"),
-        },
-        {
-          id: "chats",
-          icon: <IconMail />,
-          iconClass: "rd-icon--soft",
-          label: "Chats",
-          sub: "Open inbox",
-          onClick: () => navigate("/chats"),
-        },
-        {
-          id: "public",
-          icon: <IconEye />,
-          iconClass: "rd-icon--cream",
-          label: "Public view",
-          sub: "Browse pets",
-          onClick: () => navigate("/pets"),
-        },
-      ];
+  const displayName = userData?.first_name || userData?.email || "Rehomer";
+  const recentRequests = requests.slice(0, 3);
+  const recentNotifications = notifications.slice(0, 3);
+  const quickActions = [
+    {
+      id: "notifications",
+      icon: <IconBell />,
+      iconClass: "rd-icon--orange",
+      label: "Alerts",
+      sub: unreadNotificationCount > 0 ? `${unreadNotificationCount} unread` : "All caught up",
+      onClick: handleOpenNotifications,
+    },
+    {
+      id: "chats",
+      icon: <IconMail />,
+      iconClass: "rd-icon--soft",
+      label: "Chats",
+      sub: "Open inbox",
+      onClick: () => navigate("/chats"),
+    },
+    {
+      id: "public",
+      icon: <IconEye />,
+      iconClass: "rd-icon--cream",
+      label: "Public view",
+      sub: "Browse pets",
+      onClick: () => navigate("/pets"),
+    },
+    {
+      id: "profile",
+      icon: <IconPerson />,
+      iconClass: "rd-icon--peach",
+      label: "Profile",
+      sub: getVerificationLabel(verificationStatus),
+      onClick: () => navigate("/rehomer-profile"),
+    },
+  ];
 
   return (
     <div className="rd-screen">
       <section className="rd-hero-card">
         <div className="rd-hero-card__shine" />
-        <h2>Rehomer home</h2>
-        <p>
+        <div className="rd-hero-card__eyebrow">Today</div>
+        <h2 className="rd-hero-card__title">{displayName}</h2>
+        <p className="rd-hero-card__body">
           {isVerifiedRehomer
-            ? "Here is a quick look at your listing activity today."
+            ? `You currently have ${stats.pendingRequests} request${stats.pendingRequests === 1 ? "" : "s"} waiting for review.`
             : verificationStatus === "pending"
-              ? "Your profile is under review. Listing tools will open once approval is complete."
-              : "Finish your verification profile so your listing tools can be unlocked."}
+              ? "Your verification is under review. You can still monitor requests and existing listings here."
+              : "Finish your rehomer profile to unlock the full listing workflow."}
         </p>
+        <div className="rd-hero-pills">
+          <span className="rd-hero-pill">
+            <IconShield />
+            {getVerificationLabel(verificationStatus)}
+          </span>
+          <span className="rd-hero-pill rd-hero-pill--muted">{presenceText}</span>
+        </div>
         <div className="rd-hero-stats">
           {[
             { label: "Listings", value: stats.totalPets },
-            { label: "Requests", value: stats.pendingRequests },
+            { label: "Pending", value: stats.pendingRequests },
+            { label: "Available", value: stats.availablePets },
             { label: "Adopted", value: stats.adoptedPets },
           ].map((item) => (
             <div key={item.label} className="rd-hstat">
@@ -615,7 +584,45 @@ const HomeScreen = ({
         ))}
       </div>
 
-      <SectionHead title="Recent requests" onSeeAll={() => setScreen("requests")} />
+      <SectionHead title="Recent alerts" onSeeAll={handleOpenNotifications} />
+      <div className="rd-requests-list">
+        {recentNotifications.length === 0 ? (
+          <div className="rd-empty">
+            <div className="rd-empty__icon">
+              <IconBell />
+            </div>
+            <h3>No alerts yet</h3>
+            <p>Updates about chats, visits, and application changes will show up here.</p>
+          </div>
+        ) : (
+          recentNotifications.map((notification) => (
+            <button
+              key={notification.id}
+              type="button"
+              className={`rd-notification-item${notification.read ? "" : " rd-notification-item--unread"}`}
+              onClick={() => onNotificationClick(notification)}
+            >
+              <div className="rd-notification-topline">
+                <span className="rd-notification-title">{notification.title || "New update"}</span>
+                <span className="rd-notification-time">{formatNotificationTime(notification.created_at)}</span>
+              </div>
+              <div className="rd-notification-message">
+                {notification.message || "Open this update to see more."}
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+
+      <section className="rd-tip-card">
+        <div className="rd-tip-card__label">
+          <span className="rd-tip-dot" />
+          Tip of the day
+        </div>
+        <p>{tip}</p>
+      </section>
+
+      <SectionHead title="Adoption requests" onSeeAll={() => setScreen("requests")} />
       <div className="rd-requests-list">
         {recentRequests.length === 0 ? (
           <div className="rd-empty">
@@ -631,24 +638,17 @@ const HomeScreen = ({
               className="rd-req-card"
               onClick={() => setScreen("requests")}
             >
-              <div className="rd-req-avatar">{getPetGlyph(request.petType)}</div>
+              <div className="rd-req-avatar">{request.userName.charAt(0).toUpperCase()}</div>
               <div className="rd-req-body">
                 <div className="rd-req-name">{request.userName}</div>
-                <div className="rd-req-sub">For {request.petName}</div>
+                <div className="rd-req-sub">Wants to adopt {request.petName}</div>
+                <div className="rd-req-sub">{formatDateLabel(request.createdAt, "Today")}</div>
               </div>
-              <Badge status={request.status} />
+              <Badge status={request.status} label={getRequestWorkflowStage(request)} />
             </button>
           ))
         )}
       </div>
-
-      <section className="rd-tip-card">
-        <div className="rd-tip-card__label">
-          <span className="rd-tip-dot" />
-          Tip of the day
-        </div>
-        <p>{tip}</p>
-      </section>
     </div>
   );
 };
@@ -1486,7 +1486,7 @@ const RehomerDashboard = () => {
           <button
             type="button"
             className="rd-notif-btn"
-            onClick={() => setScreen("profile")}
+            onClick={() => navigate("/rehomer-profile")}
             aria-label="Open profile"
           >
             {userData?.profile_photo_url ? (
@@ -1513,7 +1513,26 @@ const RehomerDashboard = () => {
         </div>
       ) : (
         <>
-          {screen === "home" || screen === "requests" ? (
+          {screen === "home" ? (
+            <HomeScreen
+              userData={userData}
+              stats={stats}
+              requests={requests}
+              notifications={notifications}
+              pets={pets}
+              adoptionHistory={adoptionHistory}
+              navigate={navigate}
+              setScreen={setScreen}
+              handleOpenNotifications={handleOpenNotifications}
+              onNotificationClick={handleNotificationClick}
+              isVerifiedRehomer={isVerifiedRehomer}
+              verificationStatus={verificationStatus}
+              presenceText={presenceText}
+              unreadNotificationCount={unreadNotificationCount}
+            />
+          ) : null}
+
+          {screen === "requests" ? (
               <RequestsScreen
                 requests={requests}
                 onReject={handleReject}

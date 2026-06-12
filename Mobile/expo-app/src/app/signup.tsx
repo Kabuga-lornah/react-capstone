@@ -13,7 +13,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useAuth } from "@/context/auth";
 import { registerUser } from "@/lib/api";
+import { signInWithGoogle } from "@/lib/googleAuth";
 
 type SignupType = "user" | "rehomer";
 
@@ -33,6 +35,18 @@ const getRouteLabel = (type: SignupType) => {
   return "User";
 };
 
+const getRedirectPath = (role: string) => {
+  if (role === "rehomer") {
+    return "/rehomer-dashboard";
+  }
+
+  if (role === "shelter_admin" || role === "platform_admin") {
+    return "/admin-dashboard";
+  }
+
+  return "/pets";
+};
+
 const typeConfig = {
   user: {
     eyebrow: "Join as an adopter",
@@ -47,6 +61,7 @@ const typeConfig = {
 } as const;
 
 export default function SignupScreen() {
+  const { setAuthenticatedUser } = useAuth();
   const params = useLocalSearchParams<{ type?: string }>();
   const type: SignupType = params.type === "rehomer" ? "rehomer" : "user";
   const cfg = typeConfig[type];
@@ -63,6 +78,7 @@ export default function SignupScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   const passwordStrength = useMemo(() => {
     const { password } = formData;
@@ -132,6 +148,30 @@ export default function SignupScreen() {
       setError(submitError?.message || "Signup failed. Please try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGoogleSignup = async () => {
+    setError("");
+    setIsGoogleSubmitting(true);
+
+    try {
+      const response = await signInWithGoogle(mapRouteTypeToRole(type));
+      const profile = response.user;
+
+      if (!profile) {
+        throw new Error("Google signup finished, but no profile was returned.");
+      }
+
+      setAuthenticatedUser(profile, {
+        access: response.access,
+        refresh: response.refresh,
+      });
+      router.replace(getRedirectPath(profile.role));
+    } catch (submitError: any) {
+      setError(submitError?.message || "Google signup failed. Please try again.");
+    } finally {
+      setIsGoogleSubmitting(false);
     }
   };
 
@@ -342,8 +382,18 @@ export default function SignupScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              <Pressable style={styles.googleButton}>
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              <Pressable
+                disabled={isGoogleSubmitting}
+                onPress={handleGoogleSignup}
+                style={({ pressed }) => [
+                  styles.googleButton,
+                  pressed && !isGoogleSubmitting ? styles.googleButtonPressed : null,
+                  isGoogleSubmitting ? styles.googleButtonDisabled : null,
+                ]}
+              >
+                <Text style={styles.googleButtonText}>
+                  {isGoogleSubmitting ? "Connecting to Google..." : "Continue with Google"}
+                </Text>
               </Pressable>
 
               <Text style={styles.footerText}>
@@ -615,6 +665,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.94)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  googleButtonPressed: {
+    transform: [{ scale: 0.99 }],
+  },
+  googleButtonDisabled: {
+    opacity: 0.7,
   },
   googleButtonText: {
     color: "#2A1500",

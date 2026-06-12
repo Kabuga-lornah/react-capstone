@@ -1,4 +1,5 @@
-const API_BASE_URL = "http://127.0.0.1:8000/api";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL?.trim() || "http://127.0.0.1:8000/api";
 
 const ACCESS_TOKEN_KEY = "pet_adoption_access_token";
 const REFRESH_TOKEN_KEY = "pet_adoption_refresh_token";
@@ -202,6 +203,19 @@ export async function registerUser(data) {
 
 export async function loginUser(data) {
   const response = await apiRequest("/auth/token/", {
+    method: "POST",
+    data,
+  });
+
+  if (response?.access && response?.refresh) {
+    setTokens(response.access, response.refresh);
+  }
+
+  return response;
+}
+
+export async function loginWithGoogle(data) {
+  const response = await apiRequest("/auth/google/", {
     method: "POST",
     data,
   });

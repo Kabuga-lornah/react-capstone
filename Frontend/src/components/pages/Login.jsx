@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
 import { clearTokens, getCurrentUser, loginUser } from "../../services/api";
 import { useAuth } from "./AuthContext";
+import GoogleAuthButton from "./GoogleAuthButton";
 
 const mapRouteTypeToRole = (type) => {
   if (type === "rehomer") return "rehomer";
@@ -53,9 +54,11 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [message, setMessage] = useState(
-    location.state?.successMessage
-      ? { type: "success", text: location.state.successMessage }
-      : { type: "", text: "" }
+    location.state?.errorMessage
+      ? { type: "error", text: location.state.errorMessage }
+      : location.state?.successMessage
+        ? { type: "success", text: location.state.successMessage }
+        : { type: "", text: "" }
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
@@ -240,10 +243,10 @@ const Login = () => {
             <div style={s.orLine} />
           </div>
 
-          <button style={s.googleBtn}>
+          <GoogleAuthButton routeType={type} style={s.googleBtn}>
             <GoogleIcon />
             Continue with Google
-          </button>
+          </GoogleAuthButton>
 
           <div style={s.footerLinks}>
             Don&apos;t have an account?{" "}

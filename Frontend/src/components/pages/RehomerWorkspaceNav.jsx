@@ -14,6 +14,14 @@ const IconPaw = () => (
   </svg>
 );
 
+const IconHome = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 11.5 12 4l9 7.5" />
+    <path d="M5 10.5V20h14v-9.5" />
+    <path d="M10 20v-5h4v5" />
+  </svg>
+);
+
 const IconMail = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -29,6 +37,10 @@ const IconPerson = () => (
 );
 
 const isRehomerNavActive = (location, item) => {
+  if (item.key === "home") {
+    return location.pathname === "/rehomer-dashboard" && !location.search.includes("tab=");
+  }
+
   if (item.key === "requests") {
     return location.pathname === "/rehomer-dashboard" && location.search.includes("tab=requests");
   }
@@ -83,6 +95,7 @@ const RehomerWorkspaceNav = ({ pendingCount = 0 }) => {
   }, [location.pathname, location.search]);
 
   const items = [
+    { key: "home", label: "Home", icon: <IconHome />, to: "/rehomer-dashboard" },
     { key: "requests", label: "Requests", icon: <IconMail />, to: "/rehomer-dashboard?tab=requests" },
     { key: "pets", label: "My Pets", icon: <IconPaw />, to: "/rehomer-dashboard?tab=pets" },
     { key: "chats", label: "Chats", icon: <IconMail />, to: "/chats" },

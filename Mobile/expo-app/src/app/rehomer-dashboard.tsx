@@ -1,12 +1,15 @@
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { Image } from "expo-image";
@@ -15,10 +18,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/context/auth";
 import {
   acceptVisitPlan,
+  deletePet,
   getAccessToken,
   listConversations,
   listMyPets,
+  listNotifications,
   listReceivedApplications,
+  markNotificationRead,
+  proposeVisitPlan,
   rejectApplication,
 } from "@/lib/api";
 
@@ -39,6 +46,7 @@ type RequestRecord = {
   petName: string;
   petType: string;
   petImageUrl: string;
+  petLocation: string;
   userName: string;
   userEmail: string;
   userPhone: string;
@@ -46,9 +54,12 @@ type RequestRecord = {
   status: string;
   visitDate: string;
   visitStatus: string;
+  visitProposedBy: string;
+  visitConfirmedAt: string;
   meetingPreference: string;
   meetingLocationNotes: string;
   createdAt: string;
+  updatedAt: string;
 };
 
 type ConversationRecord = {
@@ -56,6 +67,25 @@ type ConversationRecord = {
   pet?: { id?: number } | null;
   adopter?: number | string | null;
 };
+
+type NotificationRecord = {
+  id: number;
+  title?: string;
+  message?: string;
+  type?: string;
+  read?: boolean;
+  created_at?: string;
+  pet?: { id?: number } | null;
+  conversation_id?: number | null;
+};
+
+type VisitDraft = {
+  preferredVisitDate: string;
+  meetingPreference: string;
+  meetingLocationNotes: string;
+};
+
+type RehomerScreen = "home" | "requests" | "listings" | "profile";
 
 const toTitle = (value?: string) =>
   value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
@@ -118,6 +148,7 @@ const normalizeApplication = (application: any): RequestRecord => {
     petName: pet.name,
     petType: pet.type,
     petImageUrl: pet.imageUrl,
+    petLocation: pet.locationLabel,
     userName: applicantName || applicant.username || applicant.email || "Anonymous",
     userEmail: applicant.email || "No email",
     userPhone: applicant.phone_number || "No phone",
@@ -125,70 +156,260 @@ const normalizeApplication = (application: any): RequestRecord => {
     status: normalizeStatus(application.status || "pending"),
     visitDate: application.preferred_visit_date || "",
     visitStatus: application.visit_status || "not_started",
+    visitProposedBy: application.visit_proposed_by || "",
+    visitConfirmedAt: application.visit_confirmed_at || "",
     meetingPreference: application.meeting_preference || "",
     meetingLocationNotes: application.meeting_location_notes || "",
     createdAt: application.created_at || "",
+    updatedAt: application.updated_at || "",
   };
 };
 
-const formatDateLabel = (value?: string) => {
+const createVisitDraft = (request: RequestRecord): VisitDraft => ({
+  preferredVisitDate: request.visitDate || "",
+  meetingPreference: request.meetingPreference || "",
+  meetingLocationNotes: request.meetingLocationNotes || "",
+});
+
+const getWorkflowStage = (request: RequestRecord) => {
+  if (request.status === "rejected") {
+    return "Rejected";
+  }
+
+  if (request.status === "approved") {
+    return "Completed";
+  }
+
+  if (request.visitStatus === "agreed") {
+    return "Visit agreed";
+  }
+
+  if (request.visitStatus === "proposed") {
+    return "Visit planned";
+  }
+
+  return "Reviewing";
+};
+
+const getWorkflowSteps = (request: RequestRecord, hasConversation: boolean) => {
+  const currentStep =
+    request.status === "approved"
+      ? "completed"
+      : request.visitStatus === "agreed" || request.visitStatus === "proposed"
+        ? "visit_planned"
+        : hasConversation || request.status === "pending"
+          ? "reviewing"
+          : "new_request";
+
+  const steps = [
+    { key: "new_request", label: "New request" },
+    { key: "reviewing", label: "Reviewing" },
+    {
+      key: "visit_planned",
+      label: request.visitStatus === "agreed" ? "Visit agreed" : "Visit planned",
+    },
+    { key: "completed", label: "Completed" },
+  ];
+
+  const activeIndex = steps.findIndex((step) => step.key === currentStep);
+
+  return steps.map((step, index) => ({
+    ...step,
+    isActive: index === activeIndex,
+    isComplete: index < activeIndex,
+  }));
+};
+
+const formatDateLabel = (value?: string, fallback = "Not scheduled") => {
   if (!value) {
-    return "Not scheduled";
+    return fallback;
   }
 
-  const [year, month, day] = String(value).split("-").map(Number);
-  if (!year || !month || !day) {
-    return "Not scheduled";
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return fallback;
   }
 
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+  return parsedDate.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
 };
 
-const getMeetingPreferenceLabel = (value?: string) => {
-  if (value === "rehomer_home") {
-    return "At the rehomer's place";
-  }
-  if (value === "adopter_home") {
-    return "At the adopter's place";
-  }
-  if (value === "neutral_place") {
-    return "At a neutral place";
+const formatNotificationTime = (value?: string) => {
+  if (!value) {
+    return "Just now";
   }
 
-  return "Meeting details coming soon";
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    return "Just now";
+  }
+
+  const diffMinutes = Math.max(0, Math.round((Date.now() - timestamp.getTime()) / 60000));
+  if (diffMinutes < 1) {
+    return "Just now";
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 7) {
+    return `${diffDays}d ago`;
+  }
+
+  return timestamp.toLocaleDateString();
 };
 
-const getStatusTone = (status?: string) => {
+const getMeetingPreferenceLabel = (value?: string) => {
+  if (value === "rehomer_home") {
+    return "Visit the rehomer or pet location";
+  }
+  if (value === "adopter_home") {
+    return "Rehomer visits adopter's place";
+  }
+  if (value === "neutral_place") {
+    return "Meet at a neutral place";
+  }
+
+  return "To be agreed in chat";
+};
+
+const getPresenceText = (profile: any) => {
+  if (profile?.is_online) {
+    return "Online";
+  }
+
+  if (profile?.last_seen) {
+    const timestamp = new Date(profile.last_seen);
+    if (!Number.isNaN(timestamp.getTime())) {
+      return `Last active ${timestamp.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })}`;
+    }
+  }
+
+  return "Offline";
+};
+
+const getVerificationLabel = (status?: string) => {
+  if (status === "verified") {
+    return "Verified";
+  }
+  if (status === "pending") {
+    return "Pending approval";
+  }
+  if (status === "rejected") {
+    return "Rejected";
+  }
+  return "Incomplete";
+};
+
+const dailyTips = [
+  "Adding 3 or more clear photos helps serious adopters trust a listing faster.",
+  "Honest temperament notes reduce mismatches and save everyone time.",
+  "Vaccination and deworming details help adopters prepare responsibly.",
+  "A calm transition week helps adopted pets settle into new routines.",
+];
+
+const meetingOptions = [
+  { value: "rehomer_home", label: "Pet location" },
+  { value: "adopter_home", label: "Adopter home" },
+  { value: "neutral_place", label: "Neutral place" },
+] as const;
+
+const getStatusBadgeStyle = (status?: string) => {
   const normalized = normalizeStatus(status);
 
   if (normalized === "approved" || normalized === "adopted") {
-    return styles.badgeSuccess;
+    return [styles.badge, styles.badgeSuccess];
   }
-  if (normalized === "rejected") {
-    return styles.badgeDanger;
+  if (normalized === "rejected" || normalized === "unavailable") {
+    return [styles.badge, styles.badgeDanger];
   }
 
-  return styles.badgeWarning;
+  return [styles.badge, styles.badgeWarning];
 };
 
-export default function RehomerDashboardScreen() {
+const RehomerBottomNav = ({
+  currentScreen,
+  pendingRequests,
+  unreadChatsCount,
+}: {
+  currentScreen: RehomerScreen;
+  pendingRequests: number;
+  unreadChatsCount: number;
+}) => {
+  const tabs = [
+    { key: "home" as const, label: "Home", icon: "home-outline", onPress: () => router.replace("/rehomer-dashboard") },
+    { key: "requests" as const, label: "Requests", icon: "file-document-outline", onPress: () => router.replace("/rehomer-requests"), badge: pendingRequests },
+    { key: "listings" as const, label: "My Pets", icon: "paw-outline", onPress: () => router.replace("/rehomer-listings") },
+    { key: "chats" as const, label: "Chats", icon: "chat-processing-outline", onPress: () => router.replace("/chats"), badge: unreadChatsCount },
+    { key: "profile" as const, label: "Profile", icon: "account-circle-outline", onPress: () => router.replace("/rehomer-profile") },
+  ];
+
+  return (
+    <View style={styles.bottomNav}>
+      {tabs.map((tab) => {
+        const isActive = tab.key === currentScreen;
+        return (
+          <Pressable key={tab.key} onPress={tab.onPress} style={styles.navItem}>
+            <View style={[styles.navIconWrap, isActive ? styles.navIconWrapActive : null]}>
+              <View style={[styles.navIcon, isActive ? styles.navIconActive : null]}>
+                <MaterialCommunityIcons
+                  color={isActive ? "#FFFFFF" : "#B66900"}
+                  name={tab.icon as any}
+                  size={17}
+                />
+              </View>
+              {tab.badge && tab.badge > 0 ? (
+                <View style={styles.navBadge}>
+                  <Text style={styles.navBadgeText}>{tab.badge > 99 ? "99+" : tab.badge}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[styles.navLabel, isActive ? styles.navLabelActive : null]}>{tab.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+};
+
+export function RehomerWorkspaceScreen({
+  screen = "home",
+}: {
+  screen?: RehomerScreen;
+}) {
   const { userData, logout } = useAuth();
   const [pets, setPets] = useState<PetRecord[]>([]);
   const [requests, setRequests] = useState<RequestRecord[]>([]);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [busyRequestId, setBusyRequestId] = useState("");
+  const [busyPetId, setBusyPetId] = useState("");
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
+  const [selectedDate, setSelectedDate] = useState("");
+  const [visitEditorId, setVisitEditorId] = useState("");
+  const [visitDrafts, setVisitDrafts] = useState<Record<string, VisitDraft>>({});
 
   const hasSession = Boolean(getAccessToken());
   const isAllowed = userData?.role === "rehomer" || userData?.role === "shelter_admin";
+  const verificationStatus = userData?.rehomer_verification_status || "incomplete";
+  const isVerifiedRehomer = verificationStatus === "verified";
+  const presenceText = getPresenceText(userData);
 
   const fetchDashboard = async (isRefreshing = false) => {
     if (!getAccessToken() || !isAllowed) {
@@ -205,17 +426,22 @@ export default function RehomerDashboardScreen() {
       }
 
       setErrorMessage("");
-      const [petResponse, requestResponse, conversationResponse] = await Promise.all([
-        listMyPets(),
-        listReceivedApplications(),
-        listConversations().catch(() => []),
-      ]);
+      const [petResponse, requestResponse, conversationResponse, notificationResponse] =
+        await Promise.all([
+          listMyPets(),
+          listReceivedApplications(),
+          listConversations().catch(() => []),
+          listNotifications().catch(() => []),
+        ]);
 
       const petResults = Array.isArray(petResponse) ? petResponse : petResponse?.results || [];
       const requestResults = Array.isArray(requestResponse) ? requestResponse : requestResponse?.results || [];
       const conversationResults = Array.isArray(conversationResponse)
         ? conversationResponse
         : conversationResponse?.results || [];
+      const notificationResults = Array.isArray(notificationResponse)
+        ? notificationResponse
+        : notificationResponse?.results || [];
 
       setPets(petResults.map(normalizePet));
       setRequests(
@@ -224,6 +450,7 @@ export default function RehomerDashboardScreen() {
           .filter((request: RequestRecord) => request.status !== "withdrawn"),
       );
       setConversations(conversationResults);
+      setNotifications(notificationResults);
     } catch (error: any) {
       setErrorMessage(error?.message || "We could not load your rehomer dashboard.");
     } finally {
@@ -233,7 +460,7 @@ export default function RehomerDashboardScreen() {
   };
 
   useEffect(() => {
-    fetchDashboard();
+    void fetchDashboard();
   }, [isAllowed]);
 
   useEffect(() => {
@@ -241,7 +468,7 @@ export default function RehomerDashboardScreen() {
       return undefined;
     }
 
-    const timer = setTimeout(() => setSuccessMessage(""), 3200);
+    const timer = setTimeout(() => setSuccessMessage(""), 3600);
     return () => clearTimeout(timer);
   }, [successMessage]);
 
@@ -253,6 +480,25 @@ export default function RehomerDashboardScreen() {
       adoptedPets: pets.filter((pet) => pet.status === "adopted" || pet.adopted).length,
     }),
     [pets, requests],
+  );
+
+  const adoptionHistory = useMemo(
+    () => requests.filter((request) => request.status === "approved"),
+    [requests],
+  );
+
+  const unreadNotificationCount = useMemo(
+    () => notifications.filter((notification) => !notification.read).length,
+    [notifications],
+  );
+
+  const unreadChatsCount = useMemo(
+    () =>
+      conversations.reduce(
+        (total, conversation: any) => total + Number(conversation?.unread_count || 0),
+        0,
+      ),
+    [conversations],
   );
 
   const conversationLookup = useMemo(
@@ -271,29 +517,90 @@ export default function RehomerDashboardScreen() {
   );
 
   const filteredRequests = useMemo(() => {
-    if (filter === "all") {
-      return requests;
-    }
+    return requests.filter((request) => {
+      const matchesStatus = filter === "all" ? true : request.status === filter;
+      const matchesDate = selectedDate
+        ? String(request.createdAt).slice(0, 10) === selectedDate.trim()
+        : true;
 
-    return requests.filter((request) => request.status === filter);
-  }, [filter, requests]);
+      return matchesStatus && matchesDate;
+    });
+  }, [filter, requests, selectedDate]);
 
-  const handleReject = async (requestId: string) => {
-    try {
-      setBusyRequestId(requestId);
-      setErrorMessage("");
-      await rejectApplication(requestId);
-      setRequests((current) =>
-        current.map((request) =>
-          request.id === requestId ? { ...request, status: "rejected" } : request,
-        ),
-      );
-      setSuccessMessage("Request rejected.");
-    } catch (error: any) {
-      setErrorMessage(error?.message || "We could not reject this request.");
-    } finally {
-      setBusyRequestId("");
-    }
+  const tip = dailyTips[new Date().getDay() % dailyTips.length];
+  const recentRequests = useMemo(() => requests.slice(0, 3), [requests]);
+  const headerTitle =
+    screen === "requests"
+      ? "Adoption requests"
+      : screen === "listings"
+        ? "My listings"
+        : screen === "profile"
+          ? "Rehomer profile"
+          : "Rehomer workspace";
+  const headerSubtitle =
+    screen === "requests"
+      ? "Review pending, approved, and rejected adoption requests in one place."
+      : screen === "listings"
+        ? "Manage your listed pets and keep track of what is still available."
+        : screen === "profile"
+          ? "Check your verification details, adoption history, and account actions."
+          : isVerifiedRehomer
+            ? "Review requests, manage listings, and keep each handover organized."
+            : verificationStatus === "pending"
+              ? "Your verification is under review. You can still monitor requests and existing listings here."
+              : "Finish your rehomer profile to unlock the full listing workflow.";
+
+  const updateVisitDraft = (requestId: string, patch: Partial<VisitDraft>) => {
+    setVisitDrafts((current) => ({
+      ...current,
+      [requestId]: {
+        ...(current[requestId] || {
+          preferredVisitDate: "",
+          meetingPreference: "",
+          meetingLocationNotes: "",
+        }),
+        ...patch,
+      },
+    }));
+  };
+
+  const openVisitEditor = (request: RequestRecord) => {
+    setVisitEditorId(request.id);
+    setVisitDrafts((current) => ({
+      ...current,
+      [request.id]: current[request.id] || createVisitDraft(request),
+    }));
+  };
+
+  const handleReject = (requestId: string, userName: string) => {
+    Alert.alert(
+      "Reject request?",
+      `This will mark ${userName}'s request as rejected.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reject",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setBusyRequestId(requestId);
+              setErrorMessage("");
+              await rejectApplication(requestId);
+              setRequests((current) =>
+                current.map((request) =>
+                  request.id === requestId ? { ...request, status: "rejected" } : request,
+                ),
+              );
+              setSuccessMessage("Application rejected.");
+            } catch (error: any) {
+              setErrorMessage(error?.message || "We could not reject this request.");
+            } finally {
+              setBusyRequestId("");
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleAcceptVisit = async (requestId: string) => {
@@ -312,14 +619,103 @@ export default function RehomerDashboardScreen() {
     }
   };
 
+  const handleSubmitVisit = async (requestId: string) => {
+    const draft = visitDrafts[requestId];
+
+    if (!draft?.preferredVisitDate || !draft?.meetingPreference) {
+      setErrorMessage("Add a visit date and meeting style before sending the plan.");
+      return;
+    }
+
+    try {
+      setBusyRequestId(requestId);
+      setErrorMessage("");
+      const updated = normalizeApplication(
+        await proposeVisitPlan(requestId, {
+          preferred_visit_date: draft.preferredVisitDate,
+          meeting_preference: draft.meetingPreference,
+          meeting_location_notes: draft.meetingLocationNotes,
+        }),
+      );
+      setRequests((current) =>
+        current.map((request) => (request.id === requestId ? updated : request)),
+      );
+      setVisitEditorId("");
+      setSuccessMessage("New visit plan sent.");
+    } catch (error: any) {
+      setErrorMessage(error?.message || "We could not update this visit plan.");
+    } finally {
+      setBusyRequestId("");
+    }
+  };
+
+  const handleDeletePet = (pet: PetRecord) => {
+    Alert.alert(
+      `Delete ${pet.name}?`,
+      "This removes the listing and clears related pending requests from this dashboard.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setBusyPetId(pet.id);
+              setErrorMessage("");
+              await deletePet(pet.id);
+              setPets((current) => current.filter((entry) => entry.id !== pet.id));
+              setRequests((current) => current.filter((request) => request.petId !== pet.id));
+              setSuccessMessage("Listing removed.");
+            } catch (error: any) {
+              setErrorMessage(error?.message || "We could not delete this listing.");
+            } finally {
+              setBusyPetId("");
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleNotificationPress = async (notification: NotificationRecord) => {
+    try {
+      if (!notification.read) {
+        await markNotificationRead(notification.id);
+        setNotifications((current) =>
+          current.map((item) =>
+            item.id === notification.id ? { ...item, read: true } : item,
+          ),
+        );
+      }
+    } catch {
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, read: true } : item,
+        ),
+      );
+    }
+
+    if (notification.conversation_id) {
+      router.push(`/chats/${notification.conversation_id}` as never);
+      return;
+    }
+
+    if (notification.type?.startsWith("application_") || notification.type?.startsWith("visit_")) {
+      router.push("/rehomer-requests");
+      return;
+    }
+
+    if (notification.pet?.id) {
+      router.push(`/pet/${notification.pet.id}` as never);
+    }
+  };
+
   if (!hasSession) {
     return (
       <SafeAreaView style={styles.screen}>
         <View style={styles.stateBox}>
           <Text style={styles.stateTitle}>Your session expired on this device.</Text>
-          <Text style={styles.stateBody}>
-            Log in again to open your rehomer workspace.
-          </Text>
+          <Text style={styles.stateBody}>Log in again to open your rehomer workspace.</Text>
           <Pressable onPress={() => router.replace("/")} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Back to login</Text>
           </Pressable>
@@ -344,29 +740,29 @@ export default function RehomerDashboardScreen() {
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
-            onRefresh={() => fetchDashboard(true)}
+            onRefresh={() => void fetchDashboard(true)}
             refreshing={refreshing}
             tintColor="#F18700"
           />
         }
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <Text style={styles.brand}>
               My<Text style={styles.brandAccent}>Furry</Text>Friends
             </Text>
-            <Text style={styles.title}>Rehomer workspace</Text>
-            <Text style={styles.subtitle}>
-              Review adoption requests, keep an eye on your listings, and jump into chats quickly.
-            </Text>
+            <Text style={styles.title}>{headerTitle}</Text>
+            <Text style={styles.subtitle}>{headerSubtitle}</Text>
           </View>
 
           <View style={styles.headerActions}>
             <Pressable onPress={() => router.push("/notifications")} style={styles.circleButton}>
-              <Text style={styles.circleButtonText}>A</Text>
+              <MaterialCommunityIcons color="#B66900" name="bell-outline" size={18} />
+              {unreadNotificationCount > 0 ? <View style={styles.unreadDot} /> : null}
             </Pressable>
-            <Pressable onPress={() => router.push("/profile")} style={styles.circleButton}>
-              <Text style={styles.circleButtonText}>U</Text>
+            <Pressable onPress={() => router.push("/rehomer-profile")} style={styles.circleButton}>
+              <MaterialCommunityIcons color="#B66900" name="account-outline" size={18} />
             </Pressable>
           </View>
         </View>
@@ -375,49 +771,189 @@ export default function RehomerDashboardScreen() {
         {errorMessage ? <Text style={styles.errorBanner}>{errorMessage}</Text> : null}
 
         {loading ? (
-          <View style={styles.stateBox}>
+          <View style={styles.stateBoxInline}>
             <ActivityIndicator color="#F18700" size="small" />
             <Text style={styles.stateTitle}>Loading your dashboard...</Text>
           </View>
         ) : (
           <>
-            <View style={styles.heroCard}>
-              <Text style={styles.eyebrow}>Today</Text>
-              <Text style={styles.heroTitle}>
-                {userData?.first_name || userData?.email || "Rehomer"}
-              </Text>
-              <Text style={styles.heroBody}>
-                You currently have {stats.pendingRequests} request{stats.pendingRequests === 1 ? "" : "s"} waiting for review.
-              </Text>
+            {screen === "home" ? (
+              <>
+                <View style={styles.heroCard}>
+                  <Text style={styles.heroEyebrow}>Today</Text>
+                  <Text style={styles.heroTitle}>
+                    {userData?.first_name || userData?.email || "Rehomer"}
+                  </Text>
+                  <Text style={styles.heroBody}>
+                    {isVerifiedRehomer
+                      ? `You currently have ${stats.pendingRequests} request${stats.pendingRequests === 1 ? "" : "s"} waiting for review.`
+                      : `Verification status: ${getVerificationLabel(verificationStatus)}.`}
+                  </Text>
 
-              <View style={styles.statsGrid}>
-                {[
-                  { label: "Listings", value: stats.totalPets },
-                  { label: "Available", value: stats.availablePets },
-                  { label: "Pending", value: stats.pendingRequests },
-                  { label: "Adopted", value: stats.adoptedPets },
-                ].map((item) => (
-                  <View key={item.label} style={styles.statCard}>
-                    <Text style={styles.statValue}>{item.value}</Text>
-                    <Text style={styles.statLabel}>{item.label}</Text>
+                  <View style={styles.heroStatusRow}>
+                    <View style={styles.heroStatusPill}>
+                      <MaterialCommunityIcons color="#FFFFFF" name="shield-check-outline" size={15} />
+                      <Text style={styles.heroStatusText}>{getVerificationLabel(verificationStatus)}</Text>
+                    </View>
+                    <View style={styles.heroStatusPillMuted}>
+                      <Text style={styles.heroStatusTextMuted}>{presenceText}</Text>
+                    </View>
                   </View>
-                ))}
+
+                  <View style={styles.statsGrid}>
+                    {[
+                      { label: "Listings", value: stats.totalPets },
+                      { label: "Pending", value: stats.pendingRequests },
+                      { label: "Available", value: stats.availablePets },
+                      { label: "Adopted", value: stats.adoptedPets },
+                    ].map((item) => (
+                      <View key={item.label} style={styles.statCard}>
+                        <Text style={styles.statValue}>{item.value}</Text>
+                        <Text style={styles.statLabel}>{item.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.tipCard}>
+                  <View style={styles.tipHead}>
+                    <MaterialCommunityIcons color="#D97706" name="lightbulb-on-outline" size={16} />
+                    <Text style={styles.tipLabel}>Tip of the day</Text>
+                  </View>
+                  <Text style={styles.tipBody}>{tip}</Text>
+                </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Quick actions</Text>
+                  <View style={styles.quickGrid}>
+                    {[
+                      {
+                        key: "requests",
+                        icon: "file-document-outline",
+                        title: "Requests",
+                        sub: `${stats.pendingRequests} pending`,
+                        onPress: () => router.push("/rehomer-requests"),
+                      },
+                      {
+                        key: "chats",
+                        icon: "chat-processing-outline",
+                        title: "Chats",
+                        sub: unreadChatsCount > 0 ? `${unreadChatsCount} unread` : "Open your inbox",
+                        onPress: () => router.push("/chats"),
+                      },
+                      {
+                        key: "listings",
+                        icon: "paw-outline",
+                        title: "My listings",
+                        sub: `${stats.totalPets} pets`,
+                        onPress: () => router.push("/rehomer-listings"),
+                      },
+                      {
+                        key: "profile",
+                        icon: "account-circle-outline",
+                        title: "Profile",
+                        sub: getVerificationLabel(verificationStatus),
+                        onPress: () => router.push("/rehomer-profile"),
+                      },
+                    ].map((action) => (
+                      <Pressable key={action.key} onPress={action.onPress} style={styles.quickAction}>
+                        <View style={styles.quickActionIcon}>
+                          <MaterialCommunityIcons color="#C16D00" name={action.icon as any} size={18} />
+                        </View>
+                        <Text style={styles.quickActionTitle}>{action.title}</Text>
+                        <Text style={styles.quickActionSub}>{action.sub}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.section}>
+                  <View style={styles.sectionHead}>
+                    <Text style={styles.sectionTitle}>Recent alerts</Text>
+                    <Pressable onPress={() => router.push("/notifications")}>
+                      <Text style={styles.seeAllText}>See all</Text>
+                    </Pressable>
+                  </View>
+                  {notifications.length === 0 ? (
+                    <View style={styles.emptyCard}>
+                      <Text style={styles.emptyTitle}>No alerts yet.</Text>
+                      <Text style={styles.emptyBody}>
+                        Updates about chats, visits, and application changes will show up here.
+                      </Text>
+                    </View>
+                  ) : (
+                    notifications.slice(0, 3).map((notification) => (
+                      <Pressable
+                        key={notification.id}
+                        onPress={() => void handleNotificationPress(notification)}
+                        style={[
+                          styles.notificationCard,
+                          !notification.read ? styles.notificationCardUnread : null,
+                        ]}
+                      >
+                        <View style={styles.notificationTop}>
+                          <Text style={styles.notificationTitle}>
+                            {notification.title || "New update"}
+                          </Text>
+                          <Text style={styles.notificationTime}>
+                            {formatNotificationTime(notification.created_at)}
+                          </Text>
+                        </View>
+                        <Text style={styles.notificationMessage}>
+                          {notification.message || "Open this update to see more."}
+                        </Text>
+                      </Pressable>
+                    ))
+                  )}
+                </View>
+
+                <View style={styles.section}>
+                  <View style={styles.sectionHead}>
+                    <Text style={styles.sectionTitle}>Adoption requests</Text>
+                    <Pressable onPress={() => router.push("/rehomer-requests")}>
+                      <Text style={styles.seeAllText}>See all</Text>
+                    </Pressable>
+                  </View>
+                  {recentRequests.length === 0 ? (
+                    <View style={styles.emptyCard}>
+                      <Text style={styles.emptyTitle}>No requests yet.</Text>
+                      <Text style={styles.emptyBody}>
+                        New adopter requests will appear here first.
+                      </Text>
+                    </View>
+                  ) : (
+                    recentRequests.map((request) => (
+                      <Pressable
+                        key={request.id}
+                        onPress={() => router.push("/rehomer-requests")}
+                        style={styles.notificationCard}
+                      >
+                        <View style={styles.notificationTop}>
+                          <Text style={styles.notificationTitle}>{request.userName}</Text>
+                          <View style={getStatusBadgeStyle(request.status)}>
+                            <Text style={styles.badgeText}>{getWorkflowStage(request)}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.notificationMessage}>
+                          Wants to adopt {request.petName}
+                        </Text>
+                      </Pressable>
+                    ))
+                  )}
+                </View>
+              </>
+            ) : null}
+
+            {screen === "requests" ? (
+              <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Adoption requests</Text>
+              <View style={styles.helperCard}>
+                <Text style={styles.helperCardTitle}>Requests only</Text>
+                <Text style={styles.helperCardBody}>
+                  Ongoing conversations now live in chats. Use this area to review applications and plan visits.
+                </Text>
               </View>
-            </View>
 
-            <View style={styles.quickRow}>
-              <Pressable onPress={() => router.push("/chats" as never)} style={styles.quickAction}>
-                <Text style={styles.quickActionTitle}>Chats</Text>
-                <Text style={styles.quickActionSub}>Open your inbox</Text>
-              </Pressable>
-              <Pressable onPress={() => router.push("/profile")} style={styles.quickAction}>
-                <Text style={styles.quickActionTitle}>Profile</Text>
-                <Text style={styles.quickActionSub}>Account and logout</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Requests</Text>
               <View style={styles.filterRow}>
                 {[
                   { value: "all", label: "All" },
@@ -445,56 +981,195 @@ export default function RehomerDashboardScreen() {
                 ))}
               </View>
 
+              <View style={styles.dateFilterRow}>
+                <TextInput
+                  autoCapitalize="none"
+                  keyboardType="numbers-and-punctuation"
+                  onChangeText={setSelectedDate}
+                  placeholder="Filter by date: YYYY-MM-DD"
+                  placeholderTextColor="#B08A58"
+                  style={styles.dateInput}
+                  value={selectedDate}
+                />
+                {selectedDate ? (
+                  <Pressable onPress={() => setSelectedDate("")} style={styles.clearButton}>
+                    <Text style={styles.clearButtonText}>Clear</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+
               {filteredRequests.length === 0 ? (
                 <View style={styles.emptyCard}>
-                  <Text style={styles.emptyTitle}>No requests in this view yet.</Text>
+                  <Text style={styles.emptyTitle}>No requests match this filter.</Text>
                   <Text style={styles.emptyBody}>
-                    When adopters apply for your pets, they will show up here.
+                    This list updates as adopters apply and as you review them.
                   </Text>
                 </View>
               ) : (
                 filteredRequests.map((request) => {
-                  const conversationId =
-                    conversationLookup[`${request.petId}-${request.applicantId}`];
+                  const conversationId = conversationLookup[`${request.petId}-${request.applicantId}`];
                   const isBusy = busyRequestId === request.id;
+                  const workflowStage = getWorkflowStage(request);
+                  const workflowSteps = getWorkflowSteps(request, Boolean(conversationId));
 
                   return (
                     <View key={request.id} style={styles.requestCard}>
-                      <View style={styles.requestTop}>
-                        <Image
-                          contentFit="cover"
-                          source={{ uri: request.petImageUrl }}
-                          style={styles.requestImage}
-                        />
-                        <View style={styles.requestBody}>
-                          <View style={styles.requestHeadline}>
-                            <Text numberOfLines={1} style={styles.requestName}>
-                              {request.userName}
-                            </Text>
-                            <View style={[styles.badge, getStatusTone(request.status)]}>
-                              <Text style={styles.badgeText}>{toTitle(request.status)}</Text>
+                      <View style={styles.requestHeader}>
+                        <View style={styles.requestAvatar}>
+                          <Text style={styles.requestAvatarText}>
+                            {request.userName.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.requestHeaderBody}>
+                          <Text style={styles.requestName}>{request.userName}</Text>
+                          <Text style={styles.requestSub}>Wants to adopt {request.petName}</Text>
+                          <Text style={styles.requestSub}>
+                            {request.userEmail} {" • "} {request.userPhone}
+                          </Text>
+                        </View>
+                        <View style={getStatusBadgeStyle(
+                          workflowStage === "Rejected"
+                            ? "rejected"
+                            : workflowStage === "Completed"
+                              ? "approved"
+                              : "pending",
+                        )}>
+                          <Text style={styles.badgeText}>{workflowStage}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.workflowCard}>
+                        <Text style={styles.workflowLabel}>Request journey</Text>
+                        <View style={styles.workflowRow}>
+                          {workflowSteps.map((step) => (
+                            <View
+                              key={`${request.id}-${step.key}`}
+                              style={[
+                                styles.workflowStep,
+                                step.isActive ? styles.workflowStepActive : null,
+                                step.isComplete ? styles.workflowStepComplete : null,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.workflowStepText,
+                                  step.isActive || step.isComplete
+                                    ? styles.workflowStepTextActive
+                                    : null,
+                                ]}
+                              >
+                                {step.label}
+                              </Text>
                             </View>
-                          </View>
-                          <Text style={styles.requestMeta}>For {request.petName}</Text>
-                          <Text style={styles.requestMeta}>{request.userEmail}</Text>
-                          <Text numberOfLines={2} style={styles.requestMessage}>
-                            {request.message}
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={styles.requestPetCard}>
+                        <Image contentFit="cover" source={{ uri: request.petImageUrl }} style={styles.requestImage} />
+                        <View style={styles.requestPetBody}>
+                          <Text style={styles.requestPetName}>{request.petName}</Text>
+                          <Text style={styles.requestSub}>
+                            {toTitle(request.petType)} {" • "} {request.petLocation}
                           </Text>
                         </View>
                       </View>
 
-                      <View style={styles.visitCard}>
-                        <Text style={styles.visitLabel}>Visit plan</Text>
-                        <Text style={styles.visitValue}>{formatDateLabel(request.visitDate)}</Text>
-                        <Text style={styles.visitHint}>
-                          {request.meetingPreference
-                            ? getMeetingPreferenceLabel(request.meetingPreference)
-                            : "No meeting plan proposed yet."}
-                        </Text>
-                        {request.meetingLocationNotes ? (
-                          <Text style={styles.visitNotes}>{request.meetingLocationNotes}</Text>
-                        ) : null}
+                      <View style={styles.metaGrid}>
+                        <View style={styles.metaItem}>
+                          <Text style={styles.metaLabel}>Requested on</Text>
+                          <Text style={styles.metaValue}>{formatDateLabel(request.createdAt, "Today")}</Text>
+                        </View>
+                        <View style={styles.metaItem}>
+                          <Text style={styles.metaLabel}>Visit plan</Text>
+                          <Text style={styles.metaValue}>{formatDateLabel(request.visitDate)}</Text>
+                        </View>
+                        <View style={styles.metaItem}>
+                          <Text style={styles.metaLabel}>Meeting</Text>
+                          <Text style={styles.metaValue}>{getMeetingPreferenceLabel(request.meetingPreference)}</Text>
+                        </View>
                       </View>
+
+                      <Text style={styles.requestMessage}>{request.message}</Text>
+
+                      {request.meetingLocationNotes ? (
+                        <View style={styles.visitNoteCard}>
+                          <Text style={styles.metaLabel}>Meetup notes</Text>
+                          <Text style={styles.visitNoteText}>{request.meetingLocationNotes}</Text>
+                        </View>
+                      ) : null}
+
+                      {visitEditorId === request.id ? (
+                        <View style={styles.editorCard}>
+                          <TextInput
+                            autoCapitalize="none"
+                            keyboardType="numbers-and-punctuation"
+                            onChangeText={(value) =>
+                              updateVisitDraft(request.id, { preferredVisitDate: value })
+                            }
+                            placeholder="Visit date: YYYY-MM-DD"
+                            placeholderTextColor="#B08A58"
+                            style={styles.editorInput}
+                            value={visitDrafts[request.id]?.preferredVisitDate || ""}
+                          />
+                          <View style={styles.meetingRow}>
+                            {meetingOptions.map((option) => {
+                              const selected =
+                                visitDrafts[request.id]?.meetingPreference === option.value;
+
+                              return (
+                                <Pressable
+                                  key={option.value}
+                                  onPress={() =>
+                                    updateVisitDraft(request.id, { meetingPreference: option.value })
+                                  }
+                                  style={[
+                                    styles.meetingChip,
+                                    selected ? styles.meetingChipActive : null,
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.meetingChipText,
+                                      selected ? styles.meetingChipTextActive : null,
+                                    ]}
+                                  >
+                                    {option.label}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                          <TextInput
+                            multiline
+                            onChangeText={(value) =>
+                              updateVisitDraft(request.id, { meetingLocationNotes: value })
+                            }
+                            placeholder="Share the time, area, or meetup details that work best."
+                            placeholderTextColor="#B08A58"
+                            style={styles.editorTextarea}
+                            textAlignVertical="top"
+                            value={visitDrafts[request.id]?.meetingLocationNotes || ""}
+                          />
+                          <View style={styles.editorActions}>
+                            <Pressable
+                              onPress={() => setVisitEditorId("")}
+                              style={styles.ghostButton}
+                            >
+                              <Text style={styles.ghostButtonText}>Cancel</Text>
+                            </Pressable>
+                            <Pressable
+                              disabled={isBusy}
+                              onPress={() => void handleSubmitVisit(request.id)}
+                              style={styles.secondaryButton}
+                            >
+                              <Text style={styles.secondaryButtonText}>
+                                {isBusy ? "Saving..." : "Send visit plan"}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
 
                       <View style={styles.actionsRow}>
                         {conversationId ? (
@@ -506,18 +1181,34 @@ export default function RehomerDashboardScreen() {
                           </Pressable>
                         ) : (
                           <View style={styles.disabledPill}>
-                            <Text style={styles.disabledPillText}>Chat appears after first message</Text>
+                            <Text style={styles.disabledPillText}>
+                              Chat appears after the first message
+                            </Text>
                           </View>
                         )}
 
-                        {request.visitStatus === "proposed" ? (
+                        {request.visitStatus === "proposed" &&
+                        request.visitProposedBy === "adopter" ? (
                           <Pressable
                             disabled={isBusy}
-                            onPress={() => handleAcceptVisit(request.id)}
+                            onPress={() => void handleAcceptVisit(request.id)}
                             style={styles.secondaryButton}
                           >
                             <Text style={styles.secondaryButtonText}>
-                              {isBusy ? "Please wait..." : "Agree visit"}
+                              {isBusy ? "Please wait..." : "Accept visit"}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+
+                        {request.status === "pending" ? (
+                          <Pressable
+                            onPress={() => openVisitEditor(request)}
+                            style={styles.ghostButton}
+                          >
+                            <Text style={styles.ghostButtonText}>
+                              {request.visitStatus === "not_started"
+                                ? "Propose visit"
+                                : "Suggest another time"}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -525,10 +1216,10 @@ export default function RehomerDashboardScreen() {
                         {request.status === "pending" ? (
                           <Pressable
                             disabled={isBusy}
-                            onPress={() => handleReject(request.id)}
-                            style={styles.ghostButton}
+                            onPress={() => handleReject(request.id, request.userName)}
+                            style={styles.dangerButton}
                           >
-                            <Text style={styles.ghostButtonText}>
+                            <Text style={styles.dangerButtonText}>
                               {isBusy ? "Please wait..." : "Reject"}
                             </Text>
                           </Pressable>
@@ -538,19 +1229,35 @@ export default function RehomerDashboardScreen() {
                   );
                 })
               )}
-            </View>
+              </View>
+            ) : null}
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>My listings snapshot</Text>
+            {screen === "listings" ? (
+              <View style={styles.section}>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>My listings</Text>
+                <Text style={styles.sectionCount}>{pets.length}</Text>
+              </View>
+              {!isVerifiedRehomer ? (
+                <View style={styles.helperCard}>
+                  <Text style={styles.helperCardTitle}>Verification note</Text>
+                  <Text style={styles.helperCardBody}>
+                    {verificationStatus === "pending"
+                      ? "Your profile is under review. New listing tools can open after approval."
+                      : "Finish your rehomer profile so the full listing workflow can be unlocked."}
+                  </Text>
+                </View>
+              ) : null}
+
               {pets.length === 0 ? (
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyTitle}>No listed pets yet.</Text>
                   <Text style={styles.emptyBody}>
-                    Once your pets are listed, they will appear here with quick status context.
+                    Once your pets are listed, they will appear here with quick status actions.
                   </Text>
                 </View>
               ) : (
-                pets.slice(0, 3).map((pet) => (
+                pets.map((pet) => (
                   <View key={pet.id} style={styles.petCard}>
                     <Image contentFit="cover" source={{ uri: pet.imageUrl }} style={styles.petImage} />
                     <View style={styles.petBody}>
@@ -558,30 +1265,153 @@ export default function RehomerDashboardScreen() {
                       <Text style={styles.petMeta}>{toTitle(pet.type)}</Text>
                       <Text style={styles.petMeta}>{pet.locationLabel}</Text>
                     </View>
-                    <View style={[styles.badge, getStatusTone(pet.adopted ? "approved" : pet.status)]}>
+                    <View style={getStatusBadgeStyle(pet.adopted ? "approved" : pet.status)}>
                       <Text style={styles.badgeText}>
                         {pet.adopted ? "Adopted" : toTitle(pet.status || "available")}
                       </Text>
                     </View>
+                    <View style={styles.petActions}>
+                      <Pressable
+                        onPress={() => router.push(`/pet/${pet.id}` as never)}
+                        style={styles.iconOnlyButton}
+                      >
+                        <MaterialCommunityIcons color="#B66900" name="eye-outline" size={18} />
+                      </Pressable>
+                      <Pressable
+                        disabled={busyPetId === pet.id}
+                        onPress={() => handleDeletePet(pet)}
+                        style={styles.iconOnlyButton}
+                      >
+                        <MaterialCommunityIcons color="#C2410C" name="trash-can-outline" size={18} />
+                      </Pressable>
+                    </View>
                   </View>
                 ))
               )}
-            </View>
+              </View>
+            ) : null}
 
-            <Pressable
-              onPress={() => {
-                logout();
-                router.replace("/");
-              }}
-              style={styles.logoutButton}
-            >
-              <Text style={styles.logoutButtonText}>Log out</Text>
-            </Pressable>
+            {screen === "profile" ? (
+              <>
+                <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Profile snapshot</Text>
+              <View style={styles.profileCard}>
+                <View style={styles.profileTop}>
+                  <View style={styles.profileAvatar}>
+                    {userData?.profile_photo_url ? (
+                      <Image
+                        contentFit="cover"
+                        source={{ uri: userData.profile_photo_url }}
+                        style={styles.profileAvatarImage}
+                      />
+                    ) : (
+                      <MaterialCommunityIcons color="#B66900" name="account-outline" size={22} />
+                    )}
+                  </View>
+                  <View style={styles.profileBody}>
+                    <Text style={styles.profileName}>
+                      {userData?.first_name || userData?.email || "Rehomer"}
+                    </Text>
+                    <Text style={styles.profileRole}>{toTitle(userData?.role || "rehomer")}</Text>
+                  </View>
+                  <View style={getStatusBadgeStyle(
+                    verificationStatus === "verified"
+                      ? "approved"
+                      : verificationStatus === "rejected"
+                        ? "rejected"
+                        : "pending",
+                  )}>
+                    <Text style={styles.badgeText}>{getVerificationLabel(verificationStatus)}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.profileInfoList}>
+                  {[
+                    { label: "Status", value: presenceText },
+                    { label: "Verification", value: getVerificationLabel(verificationStatus) },
+                    { label: "Phone", value: userData?.phone_number || "Not provided" },
+                    { label: "Email", value: userData?.email || "Not provided" },
+                  ].map((item) => (
+                    <View key={item.label} style={styles.profileInfoRow}>
+                      <Text style={styles.profileInfoLabel}>{item.label}</Text>
+                      <Text style={styles.profileInfoValue}>{item.value}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.miniStatsRow}>
+                {[
+                  { label: "Pets listed", value: stats.totalPets },
+                  { label: "Approved", value: stats.adoptedPets },
+                  { label: "Pending", value: stats.pendingRequests },
+                  { label: "Available", value: stats.availablePets },
+                ].map((item) => (
+                  <View key={item.label} style={styles.miniStatCard}>
+                    <Text style={styles.miniStatLabel}>{item.label}</Text>
+                    <Text style={styles.miniStatValue}>{item.value}</Text>
+                  </View>
+                ))}
+              </View>
+                </View>
+
+                <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Adoption history</Text>
+              {adoptionHistory.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyTitle}>No adopted pets yet.</Text>
+                  <Text style={styles.emptyBody}>
+                    Approved adoptions will be stored here with adopter details and timing.
+                  </Text>
+                </View>
+              ) : (
+                adoptionHistory.map((request) => (
+                  <View key={request.id} style={styles.historyCard}>
+                    <View style={styles.historyAvatar}>
+                      <MaterialCommunityIcons color="#1A7A48" name="check-circle-outline" size={18} />
+                    </View>
+                    <View style={styles.historyBody}>
+                      <Text style={styles.historyName}>{request.petName}</Text>
+                      <Text style={styles.historySub}>Adopted by {request.userName}</Text>
+                      <Text style={styles.historySub}>
+                        {request.visitConfirmedAt
+                          ? `Visit agreed ${formatDateLabel(request.visitConfirmedAt)}`
+                          : `Approved ${formatDateLabel(request.updatedAt || request.createdAt)}`}
+                      </Text>
+                    </View>
+                    <View style={[styles.badge, styles.badgeSuccess]}>
+                      <Text style={styles.badgeText}>Completed</Text>
+                    </View>
+                  </View>
+                ))
+              )}
+                </View>
+
+                <Pressable
+                  onPress={() => {
+                    logout();
+                    router.replace("/");
+                  }}
+                  style={styles.logoutButton}
+                >
+                  <Text style={styles.logoutButtonText}>Log out</Text>
+                </Pressable>
+              </>
+            ) : null}
           </>
         )}
       </ScrollView>
+      <RehomerBottomNav
+        currentScreen={screen}
+        pendingRequests={stats.pendingRequests}
+        unreadChatsCount={unreadChatsCount}
+      />
     </SafeAreaView>
   );
+}
+
+export default function RehomerDashboardScreen() {
+  return <RehomerWorkspaceScreen screen="home" />;
 }
 
 const styles = StyleSheet.create({
@@ -591,14 +1421,14 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 18,
-    paddingBottom: 32,
+    paddingBottom: 110,
   },
   header: {
     flexDirection: "row",
-    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 18,
+    alignItems: "flex-start",
     gap: 12,
+    marginBottom: 18,
   },
   headerCopy: {
     flex: 1,
@@ -626,6 +1456,7 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: "row",
     gap: 10,
+    paddingTop: 4,
   },
   circleButton: {
     width: 42,
@@ -636,10 +1467,85 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.92)",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
   },
-  circleButtonText: {
-    color: "#B66900",
-    fontSize: 13,
+  unreadDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "#D9480F",
+  },
+  bottomNav: {
+    position: "absolute",
+    left: 14,
+    right: 14,
+    bottom: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.14)",
+    backgroundColor: "rgba(255,252,247,0.98)",
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    shadowColor: "#E59A2E",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 14,
+  },
+  navItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  navIconWrap: {
+    position: "relative",
+  },
+  navIconWrapActive: {
+    transform: [{ translateY: -1 }],
+  },
+  navIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+  navIconActive: {
+    backgroundColor: "#F18700",
+  },
+  navLabel: {
+    color: "#A37134",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  navLabelActive: {
+    color: "#8C4F00",
+  },
+  navBadge: {
+    position: "absolute",
+    top: -4,
+    right: -6,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 999,
+    paddingHorizontal: 4,
+    backgroundColor: "#D9480F",
+    borderWidth: 1.5,
+    borderColor: "#FFF8EE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9,
     fontWeight: "900",
   },
   successBanner: {
@@ -666,31 +1572,73 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 12,
   },
+  stateBoxInline: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.14)",
+    backgroundColor: "rgba(255,255,255,0.8)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    gap: 12,
+  },
   heroCard: {
-    borderRadius: 28,
+    borderRadius: 30,
     backgroundColor: "#F28C00",
-    padding: 18,
+    padding: 20,
     marginBottom: 16,
   },
-  eyebrow: {
+  heroEyebrow: {
     color: "rgba(255,255,255,0.82)",
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.7,
     marginBottom: 8,
   },
   heroTitle: {
     color: "#FFFFFF",
-    fontSize: 26,
+    fontSize: 27,
     fontWeight: "900",
     marginBottom: 6,
   },
   heroBody: {
-    color: "rgba(255,255,255,0.92)",
+    color: "rgba(255,255,255,0.94)",
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 22,
     marginBottom: 14,
+  },
+  heroStatusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 14,
+  },
+  heroStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  heroStatusPillMuted: {
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  heroStatusText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  heroStatusTextMuted: {
+    color: "#FFF7EA",
+    fontSize: 12,
+    fontWeight: "800",
   },
   statsGrid: {
     flexDirection: "row",
@@ -710,22 +1658,84 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   statLabel: {
-    color: "rgba(255,255,255,0.9)",
+    color: "rgba(255,255,255,0.92)",
     fontSize: 12,
     fontWeight: "700",
   },
-  quickRow: {
-    flexDirection: "row",
-    gap: 10,
+  tipCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.16)",
+    backgroundColor: "#FFF6E8",
+    padding: 16,
     marginBottom: 18,
   },
+  tipHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  tipLabel: {
+    color: "#B66900",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  tipBody: {
+    color: "#6F5230",
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: "#261307",
+    fontSize: 22,
+    fontWeight: "900",
+    marginBottom: 12,
+  },
+  seeAllText: {
+    color: "#D97706",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  sectionCount: {
+    color: "#D97706",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  quickGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
   quickAction: {
-    flex: 1,
-    borderRadius: 20,
+    width: "47%",
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: "rgba(245,154,35,0.18)",
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "rgba(255,255,255,0.95)",
     padding: 16,
+  },
+  quickActionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: "#FFF2D9",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
   },
   quickActionTitle: {
     color: "#261307",
@@ -737,15 +1747,61 @@ const styles = StyleSheet.create({
     color: "#8B6A42",
     fontSize: 12,
     fontWeight: "700",
+    lineHeight: 18,
   },
-  section: {
-    marginBottom: 18,
+  notificationCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.14)",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    padding: 14,
+    marginBottom: 10,
   },
-  sectionTitle: {
+  notificationCardUnread: {
+    borderColor: "rgba(245,154,35,0.28)",
+    backgroundColor: "#FFF7EA",
+  },
+  notificationTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 6,
+  },
+  notificationTitle: {
     color: "#261307",
-    fontSize: 22,
+    fontSize: 15,
     fontWeight: "900",
+    flex: 1,
+  },
+  notificationTime: {
+    color: "#9A7040",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  notificationMessage: {
+    color: "#6F5230",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  helperCard: {
+    borderRadius: 18,
+    backgroundColor: "#FFF6E8",
+    padding: 14,
     marginBottom: 12,
+  },
+  helperCardTitle: {
+    color: "#B66900",
+    fontSize: 12,
+    fontWeight: "900",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  helperCardBody: {
+    color: "#7A5C35",
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
   },
   filterRow: {
     flexDirection: "row",
@@ -773,6 +1829,37 @@ const styles = StyleSheet.create({
   filterChipTextActive: {
     color: "#FFFFFF",
   },
+  dateFilterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  dateInput: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: "rgba(210,160,60,0.35)",
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    color: "#2A1500",
+    fontSize: 14,
+    fontWeight: "600",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  clearButton: {
+    minHeight: 44,
+    borderRadius: 14,
+    backgroundColor: "#FFF1D8",
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearButtonText: {
+    color: "#B66900",
+    fontSize: 12,
+    fontWeight: "800",
+  },
   emptyCard: {
     borderRadius: 22,
     borderWidth: 1,
@@ -795,14 +1882,86 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(245,154,35,0.14)",
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "rgba(255,255,255,0.94)",
     padding: 14,
     marginBottom: 12,
     gap: 12,
   },
-  requestTop: {
+  requestHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  requestAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: "#FFF1D8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  requestAvatarText: {
+    color: "#B66900",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  requestHeaderBody: {
+    flex: 1,
+    gap: 3,
+  },
+  requestName: {
+    color: "#261307",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  requestSub: {
+    color: "#8B6A42",
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  workflowCard: {
+    borderRadius: 18,
+    backgroundColor: "#FFF9EF",
+    padding: 12,
+    gap: 8,
+  },
+  workflowLabel: {
+    color: "#B66900",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  workflowRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  workflowStep: {
+    borderRadius: 999,
+    backgroundColor: "#F3E3C4",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  workflowStepActive: {
+    backgroundColor: "#FF9900",
+  },
+  workflowStepComplete: {
+    backgroundColor: "#F6C87A",
+  },
+  workflowStepText: {
+    color: "#8B6A42",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  workflowStepTextActive: {
+    color: "#FFFFFF",
+  },
+  requestPetCard: {
     flexDirection: "row",
     gap: 12,
+    alignItems: "center",
   },
   requestImage: {
     width: 74,
@@ -810,60 +1969,112 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "#FEE9BF",
   },
-  requestBody: {
+  requestPetBody: {
     flex: 1,
     gap: 4,
   },
-  requestHeadline: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  requestName: {
+  requestPetName: {
     color: "#261307",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "900",
-    flex: 1,
   },
-  requestMeta: {
-    color: "#8B6A42",
-    fontSize: 12,
+  metaGrid: {
+    gap: 8,
+  },
+  metaItem: {
+    borderRadius: 16,
+    backgroundColor: "#FFF6E8",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  metaLabel: {
+    color: "#B66900",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  metaValue: {
+    color: "#4F2A00",
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: "700",
   },
   requestMessage: {
     color: "#5F4321",
     fontSize: 13,
     lineHeight: 20,
-    marginTop: 2,
   },
-  visitCard: {
-    borderRadius: 18,
-    backgroundColor: "#FFF6E8",
+  visitNoteCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.16)",
+    backgroundColor: "#FFFFFF",
     padding: 12,
-    gap: 4,
   },
-  visitLabel: {
-    color: "#B66900",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  visitValue: {
-    color: "#261307",
-    fontSize: 15,
-    fontWeight: "900",
-  },
-  visitHint: {
-    color: "#7A5C35",
-    fontSize: 12,
+  visitNoteText: {
+    color: "#6F5230",
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: "700",
   },
-  visitNotes: {
-    color: "#8B6A42",
+  editorCard: {
+    borderRadius: 18,
+    backgroundColor: "#FFF7EA",
+    padding: 12,
+    gap: 10,
+  },
+  editorInput: {
+    borderWidth: 1.5,
+    borderColor: "rgba(210,160,60,0.35)",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    color: "#2A1500",
+    fontSize: 14,
+    fontWeight: "600",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  meetingRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  meetingChip: {
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: "rgba(245,154,35,0.22)",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  meetingChipActive: {
+    backgroundColor: "#FF9900",
+    borderColor: "#FF9900",
+  },
+  meetingChipText: {
+    color: "#9A6C30",
     fontSize: 12,
-    lineHeight: 18,
+    fontWeight: "800",
+  },
+  meetingChipTextActive: {
+    color: "#FFFFFF",
+  },
+  editorTextarea: {
+    minHeight: 96,
+    borderWidth: 1.5,
+    borderColor: "rgba(210,160,60,0.35)",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    color: "#2A1500",
+    fontSize: 14,
+    fontWeight: "600",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  editorActions: {
+    gap: 10,
   },
   actionsRow: {
     gap: 10,
@@ -874,6 +2085,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF1D8",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 14,
   },
   secondaryButtonText: {
     color: "#B66900",
@@ -888,9 +2100,23 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 14,
   },
   ghostButtonText: {
     color: "#8A5200",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  dangerButton: {
+    minHeight: 48,
+    borderRadius: 16,
+    backgroundColor: "#FFF0ED",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  dangerButtonText: {
+    color: "#C2410C",
     fontSize: 14,
     fontWeight: "800",
   },
@@ -907,15 +2133,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   petCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: "rgba(245,154,35,0.14)",
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "rgba(255,255,255,0.94)",
     padding: 12,
     marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   petImage: {
     width: 64,
@@ -937,10 +2163,141 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  petActions: {
+    gap: 8,
+  },
+  iconOnlyButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: "#FFF6E8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.14)",
+    backgroundColor: "rgba(255,255,255,0.94)",
+    padding: 16,
+    marginBottom: 12,
+  },
+  profileTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 14,
+  },
+  profileAvatar: {
+    width: 54,
+    height: 54,
+    borderRadius: 999,
+    backgroundColor: "#FFF1D8",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  profileAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  profileBody: {
+    flex: 1,
+    gap: 4,
+  },
+  profileName: {
+    color: "#261307",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  profileRole: {
+    color: "#8B6A42",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  profileInfoList: {
+    gap: 10,
+  },
+  profileInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  profileInfoLabel: {
+    color: "#8B6A42",
+    fontSize: 12,
+    fontWeight: "700",
+    flex: 1,
+  },
+  profileInfoValue: {
+    color: "#261307",
+    fontSize: 12,
+    fontWeight: "800",
+    flex: 1.2,
+    textAlign: "right",
+  },
+  miniStatsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  miniStatCard: {
+    width: "47%",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.14)",
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+  },
+  miniStatLabel: {
+    color: "#8B6A42",
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  miniStatValue: {
+    color: "#C26B00",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  historyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.14)",
+    backgroundColor: "rgba(255,255,255,0.94)",
+    padding: 12,
+    marginBottom: 10,
+  },
+  historyAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "#ECFDF3",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyBody: {
+    flex: 1,
+    gap: 3,
+  },
+  historyName: {
+    color: "#261307",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  historySub: {
+    color: "#8B6A42",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   badge: {
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
+    alignSelf: "flex-start",
   },
   badgeWarning: {
     backgroundColor: "#FFF1D8",

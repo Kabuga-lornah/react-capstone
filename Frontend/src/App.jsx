@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { AuthProvider, useAuth } from "./components/pages/AuthContext";
 import { PetPouchProvider } from "./components/pages/PetPouchContext";
 import Home from "./components/pages/Home";
+import GoogleAuthCallback from "./components/pages/GoogleAuthCallback";
 import Login from "./components/pages/Login";
 import Signup from "./components/pages/Signup";
 import RehomerDashboard from "./components/pages/RehomerDashboard";
@@ -52,6 +53,7 @@ function AppWrapper() {
           {/* Public routes */}
           <Route path="/" element={<PetsList />} />
           <Route path="/welcome" element={<Home />} />
+          <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
           <Route path="/login" element={<Navigate to="/login/user" replace />} />
           <Route path="/login/:type" element={<Login />} />
           <Route path="/signup" element={<Navigate to="/signup/user" replace />} />

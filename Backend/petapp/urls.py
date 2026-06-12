@@ -30,6 +30,7 @@ from .views import (
     PetDetailView,
     PetListView,
     AuthHeartbeatView,
+    GoogleAuthView,
     ProfileView,
     ReceivedApplicationsListView,
     RegisterView,
@@ -40,6 +41,7 @@ from .views import (
 
 urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
+    path('auth/google/', GoogleAuthView.as_view(), name='auth-google'),
     path('auth/token/', AppTokenObtainPairView.as_view(), name='token-obtain-pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('auth/me/', ProfileView.as_view(), name='auth-me'),

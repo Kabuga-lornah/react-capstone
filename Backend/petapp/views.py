@@ -1,9 +1,16 @@
+import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import urlopen
+
+from django.conf import settings
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 
 from .models import (
@@ -30,6 +37,7 @@ from .serializers import (
     PetWishlistSerializer,
     RehomerVerificationSubmitSerializer,
     RegisterSerializer,
+    GoogleAuthSerializer,
     UserSerializer,
     UserProfileUpdateSerializer,
     VisitPlanUpdateSerializer,
@@ -85,6 +93,41 @@ def create_notification(
     )
 
 
+def issue_auth_payload(user, request):
+    refresh = RefreshToken.for_user(user)
+    return {
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'user': UserSerializer(user, context={'request': request}).data,
+    }
+
+
+def build_unique_username(email):
+    base_username = (email or 'google-user').strip().lower() or 'google-user'
+    username = base_username
+    suffix = 1
+
+    while CustomUser.objects.filter(username__iexact=username).exists():
+        username = f'{base_username}-{suffix}'
+        suffix += 1
+
+    return username
+
+
+def verify_google_id_token(id_token):
+    query = urlencode({'id_token': id_token})
+    url = f'https://oauth2.googleapis.com/tokeninfo?{query}'
+
+    try:
+        with urlopen(url, timeout=10) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except HTTPError as exc:
+        detail = exc.read().decode('utf-8', errors='ignore') or 'Google rejected the token.'
+        raise ValidationError({'detail': detail})
+    except URLError:
+        raise ValidationError({'detail': 'Unable to verify the Google token right now. Please try again.'})
+
+
 class AppTokenObtainPairView(TokenObtainPairView):
     serializer_class = AppTokenObtainPairSerializer
 
@@ -92,6 +135,68 @@ class AppTokenObtainPairView(TokenObtainPairView):
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
+
+
+class GoogleAuthView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        if not settings.GOOGLE_OAUTH_CLIENT_IDS:
+            raise ValidationError({'detail': 'Google login is not configured on the server yet.'})
+
+        serializer = GoogleAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        google_payload = verify_google_id_token(serializer.validated_data['id_token'])
+        audience = (google_payload.get('aud') or '').strip()
+        email = (google_payload.get('email') or '').strip().lower()
+        email_verified = str(google_payload.get('email_verified', '')).lower() == 'true'
+
+        if audience not in settings.GOOGLE_OAUTH_CLIENT_IDS:
+            raise ValidationError({'detail': 'This Google token was issued for a different app.'})
+
+        if not email:
+            raise ValidationError({'detail': 'Google did not return an email address for this account.'})
+
+        if not email_verified:
+            raise ValidationError({'detail': 'Please use a Google account with a verified email address.'})
+
+        user = CustomUser.objects.filter(email__iexact=email).first()
+        if user is None:
+            user = CustomUser(
+                username=build_unique_username(email),
+                email=email,
+                first_name=(google_payload.get('given_name') or '').strip(),
+                last_name=(google_payload.get('family_name') or '').strip(),
+                role=serializer.validated_data['role'],
+                profile_photo_url=(google_payload.get('picture') or '').strip(),
+                email_verified=True,
+            )
+            user.set_unusable_password()
+            user.save()
+        else:
+            updated_fields = []
+
+            if not user.first_name and google_payload.get('given_name'):
+                user.first_name = google_payload['given_name'].strip()
+                updated_fields.append('first_name')
+
+            if not user.last_name and google_payload.get('family_name'):
+                user.last_name = google_payload['family_name'].strip()
+                updated_fields.append('last_name')
+
+            if not user.profile_photo_url and google_payload.get('picture'):
+                user.profile_photo_url = google_payload['picture'].strip()
+                updated_fields.append('profile_photo_url')
+
+            if not user.email_verified:
+                user.email_verified = True
+                updated_fields.append('email_verified')
+
+            if updated_fields:
+                user.save(update_fields=updated_fields)
+
+        return Response(issue_auth_payload(user, request), status=status.HTTP_200_OK)
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
