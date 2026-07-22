@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Frontend: Start Vite website",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/Frontend"
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Mobile: Start Expo web app",
+      "type": "shell",
+      "command": "npm run web",
+      "options": {
+        "cwd": "${workspaceFolder}/Mobile/expo-app"
+      },
+      "problemMatcher": [],
+      "isBackground": true
+    }
+  ]
+}
