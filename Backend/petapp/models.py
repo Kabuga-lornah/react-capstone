@@ -54,6 +54,25 @@ class CustomUser(AbstractUser):
         on_delete=models.SET_NULL,
         related_name='members',
     )
+    # Internationalization fields
+    LANGUAGE_CHOICES = [
+        ('en', 'English'),
+        ('fr', 'Français'),
+        ('de', 'Deutsch'),
+        ('pt', 'Português'),
+        ('ru', 'Русский'),
+        ('sw', 'Swahili'),
+    ]
+    preferred_language = models.CharField(
+        max_length=10,
+        choices=LANGUAGE_CHOICES,
+        default='en'
+    )
+    timezone = models.CharField(
+        max_length=50,
+        default='UTC',
+        help_text='IANA timezone identifier (e.g., America/New_York)'
+    )
 
     def __str__(self):
         return self.get_full_name() or self.username or self.email
@@ -213,6 +232,14 @@ class Pet(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name='pets',
+    )
+    # Phase 1.3: Link to breed trait profile for AI matching
+    breed_trait_profile = models.ForeignKey(
+        'BreedTraitProfile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pets'
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -566,3 +593,624 @@ class CommunityReaction(models.Model):
     def __str__(self):
         target = f"post #{self.post_id}" if self.post_id else f"comment #{self.comment_id}"
         return f"{self.user} {self.value}d {target}"
+
+
+# ============================================================================
+# PHASE 1.1: PERSONALITY TRAIT SYSTEM - Custom AI Matching Foundation
+# ============================================================================
+
+class TraitCategory(models.Model):
+    """
+    Categories that group personality traits.
+    Examples: Temperament, Energy Level, Social Behavior, etc.
+    Used to organize traits for quiz questions and pet profiles.
+    """
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    display_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        verbose_name_plural = "Trait Categories"
+
+    def __str__(self):
+        return self.name
+
+
+class PersonalityTrait(models.Model):
+    """
+    Individual personality traits for both adopters and pets.
+    Examples: "energetic", "calm", "friendly", "territorial"
+    
+    Used in:
+    - Quiz answers for adopters
+    - Pet personality profiles (via BreedTraitProfile)
+    - ML vector generation for matching algorithm
+    """
+    ADOPTER = 'adopter'
+    PET = 'pet'
+    BOTH = 'both'
+    
+    TRAIT_TYPE_CHOICES = [
+        (ADOPTER, 'Adopter Only'),
+        (PET, 'Pet Only'),
+        (BOTH, 'Both Adopter & Pet'),
+    ]
+
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    category = models.ForeignKey(
+        TraitCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='traits'
+    )
+    trait_type = models.CharField(
+        max_length=20,
+        choices=TRAIT_TYPE_CHOICES,
+        default=BOTH,
+        help_text="Whether this trait applies to adopters, pets, or both"
+    )
+    # Used for matching scoring (0.0 to 1.0 intensity)
+    default_weight = models.FloatField(default=1.0, help_text="Default weight in ML matching (0.0-1.0)")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['category', 'name']
+
+    def __str__(self):
+        return f"{self.name} ({self.category})"
+
+
+class BreedTraitProfile(models.Model):
+    """
+    Maps a pet breed to personality traits with probabilities/weights.
+    Example: Golden Retriever → [friendly: 0.95, energetic: 0.85, calm: 0.4]
+    
+    Used to:
+    - Define baseline personality for each breed
+    - Train ML matching model
+    - Generate pet personality vectors for compatibility scoring
+    """
+    # Breed information
+    species = models.CharField(
+        max_length=50,
+        choices=[
+            ('dog', 'Dog'),
+            ('cat', 'Cat'),
+            ('bird', 'Bird'),
+            ('rabbit', 'Rabbit'),
+            ('fish', 'Fish'),
+            ('snake', 'Snake'),
+            ('other', 'Other'),
+        ]
+    )
+    breed = models.CharField(max_length=150)
+    
+    # Source of data (for tracking data quality)
+    DATA_SOURCE_CHOICES = [
+        ('standard', 'Breed Standard/Registry'),
+        ('community', 'Community Feedback'),
+        ('adoption_data', 'Adoption Outcome Data'),
+        ('manual', 'Manual Entry'),
+        ('ml_trained', 'ML Model Trained'),
+    ]
+    data_source = models.CharField(
+        max_length=50,
+        choices=DATA_SOURCE_CHOICES,
+        default='standard'
+    )
+    
+    # Trait weights/probabilities (stored as JSON)
+    # Format: {"trait_id": 0.85, "trait_id": 0.45, ...}
+    trait_weights = models.JSONField(
+        default=dict,
+        help_text="Maps trait IDs to weights (0.0-1.0) indicating likelihood"
+    )
+    
+    # Metadata
+    confidence_score = models.FloatField(
+        default=0.5,
+        help_text="How confident we are in this profile (0.0-1.0)"
+    )
+    sample_size = models.IntegerField(
+        default=0,
+        help_text="Number of pets/adoptions this profile is based on"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('species', 'breed')
+        ordering = ['species', 'breed']
+        verbose_name_plural = "Breed Trait Profiles"
+
+    def __str__(self):
+        return f"{self.breed} ({self.species})"
+    
+    def get_personality_vector(self):
+        """
+        Returns personality as a numerical vector for ML matching.
+        Returns dict: {trait_id: weight, ...}
+        """
+        return self.trait_weights
+
+
+# ============================================================================
+# PHASE 1.2: QUIZ SYSTEM MODELS - Personality Assessment for Adopters
+# ============================================================================
+
+class QuizCategory(models.Model):
+    """
+    Categories for quiz questions (e.g., Lifestyle, Housing, Experience, Time Availability)
+    Used to organize questions logically in the UI.
+    """
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    display_order = models.IntegerField(default=0)
+    icon = models.CharField(max_length=50, blank=True, help_text="Icon name/emoji for UI display")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['display_order', 'name']
+        verbose_name_plural = "Quiz Categories"
+
+    def __str__(self):
+        return self.name
+
+
+class QuizQuestion(models.Model):
+    """
+    Individual questions in the personality quiz for adopters.
+    Each question maps to one or more personality traits.
+    Example: "How active are you?" → maps to 'energetic' trait with weight 0.8
+    """
+    MULTIPLE_CHOICE = 'multiple_choice'
+    SLIDER = 'slider'
+    CHECKBOX = 'checkbox'
+    TEXT_INPUT = 'text_input'
+    
+    QUESTION_TYPE_CHOICES = [
+        (MULTIPLE_CHOICE, 'Multiple Choice'),
+        (SLIDER, 'Slider (1-10)'),
+        (CHECKBOX, 'Checkboxes'),
+        (TEXT_INPUT, 'Text Input'),
+    ]
+
+    question_text = models.TextField()
+    question_type = models.CharField(max_length=50, choices=QUESTION_TYPE_CHOICES)
+    category = models.ForeignKey(
+        QuizCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='questions'
+    )
+    
+    # Help text shown to user
+    help_text = models.TextField(
+        blank=True,
+        help_text="Additional context or explanation for the question"
+    )
+    
+    # Whether this is mandatory in the quiz
+    is_required = models.BooleanField(default=True)
+    
+    # Display order within category
+    display_order = models.IntegerField(default=0)
+    
+    # For slider questions: min/max values
+    min_value = models.IntegerField(null=True, blank=True)
+    max_value = models.IntegerField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['category', 'display_order', 'id']
+
+    def __str__(self):
+        return f"{self.category.name} - {self.question_text[:50]}"
+
+
+class QuizAnswer(models.Model):
+    """
+    Predefined answer options for quiz questions.
+    Maps to one or more personality traits with weights.
+    Example: For question "How active are you?", answers are:
+        - "Very Active" → trait_mappings: {energetic: 0.9, calm: 0.1}
+        - "Moderately Active" → {energetic: 0.6, calm: 0.4}
+    """
+    question = models.ForeignKey(
+        QuizQuestion,
+        on_delete=models.CASCADE,
+        related_name='answers'
+    )
+    
+    answer_text = models.CharField(max_length=255)
+    
+    # For slider/text questions: this might be empty
+    help_text = models.TextField(blank=True)
+    
+    # Trait mappings: {trait_id: weight}
+    # Weight indicates how much this answer reflects each trait
+    trait_mappings = models.JSONField(
+        default=dict,
+        help_text="Maps trait IDs to weights (0.0-1.0)"
+    )
+    
+    # Display order for answers
+    display_order = models.IntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['question', 'display_order', 'id']
+
+    def __str__(self):
+        return f"{self.question.question_text[:30]} - {self.answer_text}"
+
+
+class AdopterQuizResponse(models.Model):
+    """
+    Stores an adopter's responses to the personality quiz.
+    Used to:
+    - Calculate adopter personality vector
+    - Store for historical analysis
+    - Track quiz completion
+    """
+    adopter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='quiz_responses'
+    )
+    
+    # Stores: {question_id: answer_id} or {question_id: slider_value}
+    responses = models.JSONField(
+        default=dict,
+        help_text="User's answers to quiz questions"
+    )
+    
+    # Calculated personality vector: {trait_id: score}
+    personality_vector = models.JSONField(
+        default=dict,
+        help_text="Calculated personality traits from responses"
+    )
+    
+    # Overall compatibility info
+    is_complete = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    # For versioning: if quiz questions change, track which version was used
+    quiz_version = models.IntegerField(default=1)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-completed_at', '-created_at']
+
+    def __str__(self):
+        return f"{self.adopter.username} - Quiz Response (v{self.quiz_version})"
+    
+    def calculate_personality_vector(self):
+        """
+        Recalculates personality vector from responses.
+        Aggregates trait weights from selected answers.
+        Returns: {trait_id: average_weight}
+        """
+        if not self.responses:
+            return {}
+        
+        # Aggregate trait scores from all answers
+        trait_scores = {}
+        answer_count = 0
+        
+        for question_id, answer_id in self.responses.items():
+            if answer_id is None:
+                continue
+            try:
+                answer = QuizAnswer.objects.get(id=answer_id)
+                for trait_id, weight in answer.trait_mappings.items():
+                    if trait_id not in trait_scores:
+                        trait_scores[trait_id] = []
+                    trait_scores[trait_id].append(weight)
+                answer_count += 1
+            except QuizAnswer.DoesNotExist:
+                continue
+        
+        # Average the scores for each trait
+        averaged_scores = {}
+        for trait_id, weights in trait_scores.items():
+            averaged_scores[trait_id] = sum(weights) / len(weights) if weights else 0
+        
+        return averaged_scores
+
+
+# ============================================================================
+# PHASE 1.3: PET PROFILE ENHANCEMENT - Personality Profiles for Matching
+# ============================================================================
+
+class PetPersonalityProfile(models.Model):
+    """
+    Stores the calculated personality profile for each pet.
+    Created from either:
+    1. BreedTraitProfile (baseline from breed standards)
+    2. Rehomer input (individual pet personality traits)
+    3. Adoption history (ML model trained on outcomes)
+    
+    Used for matching adopters with compatible pets.
+    """
+    pet = models.OneToOneField(
+        Pet,
+        on_delete=models.CASCADE,
+        related_name='personality_profile'
+    )
+    
+    # Personality vector: {trait_id: weight}
+    # Weights indicate the strength of each trait for this specific pet
+    personality_vector = models.JSONField(
+        default=dict,
+        help_text="Pet's personality traits and their weights (0.0-1.0)"
+    )
+    
+    # Source of this profile
+    DATA_SOURCE_CHOICES = [
+        ('breed_standard', 'Breed Standard'),
+        ('rehomer_input', 'Rehomer Input'),
+        ('adoption_history', 'Adoption History / ML'),
+        ('hybrid', 'Hybrid (Multiple Sources)'),
+    ]
+    data_source = models.CharField(
+        max_length=50,
+        choices=DATA_SOURCE_CHOICES,
+        default='breed_standard'
+    )
+    
+    # Confidence in this profile
+    confidence_score = models.FloatField(
+        default=0.5,
+        help_text="How confident we are in this profile (0.0-1.0)"
+    )
+    
+    # Linked to breed profile if applicable
+    breed_profile = models.ForeignKey(
+        BreedTraitProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pet_profiles'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"Personality Profile for {self.pet.name}"
+    
+    def recalculate_from_breed(self):
+        """Update personality vector based on linked breed profile"""
+        if self.breed_profile:
+            self.personality_vector = self.breed_profile.get_personality_vector()
+            self.data_source = 'breed_standard'
+            self.confidence_score = self.breed_profile.confidence_score
+            self.save()
+    
+    def update_from_rehomer_input(self, trait_weights):
+        """
+        Update personality profile from rehomer's input.
+        trait_weights: {trait_id: weight, ...}
+        """
+        self.personality_vector = trait_weights
+        self.data_source = 'rehomer_input'
+        self.confidence_score = 0.8  # Rehomer input is fairly confident
+        self.save()
+
+
+# ============================================================================
+# PHASE 1.4: MATCHING SYSTEM MODELS - Compatibility Scoring & ML Training
+# ============================================================================
+
+class MatchingScore(models.Model):
+    """
+    Stores calculated compatibility scores between adopter and pet.
+    Used to:
+    - Track matching results (for UI display)
+    - Store for historical analysis and ML training
+    - Identify which matches were successful for model refinement
+    """
+    adopter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='matching_scores'
+    )
+    
+    pet = models.ForeignKey(
+        Pet,
+        on_delete=models.CASCADE,
+        related_name='matching_scores'
+    )
+    
+    # Compatibility score: 0-100 (%)
+    # Calculated using cosine similarity of personality vectors
+    compatibility_score = models.FloatField(
+        help_text="Compatibility percentage (0-100%)"
+    )
+    
+    # Individual trait compatibility scores
+    # Useful for explaining why they're compatible
+    trait_scores = models.JSONField(
+        default=dict,
+        help_text="Per-trait compatibility scores {trait_id: score}"
+    )
+    
+    # Factors affecting the score
+    # Which algorithm/model version produced this score
+    algorithm_version = models.IntegerField(default=1)
+    
+    # Whether this match was acted upon
+    was_viewed = models.BooleanField(default=False)
+    was_liked = models.BooleanField(default=False)
+    application_submitted = models.BooleanField(default=False)
+    application = models.ForeignKey(
+        AdoptionApplication,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='matching_score'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('adopter', 'pet')
+        ordering = ['-compatibility_score', '-created_at']
+        indexes = [
+            models.Index(fields=['-compatibility_score']),
+            models.Index(fields=['adopter', '-compatibility_score']),
+            models.Index(fields=['pet', '-compatibility_score']),
+        ]
+
+    def __str__(self):
+        return f"{self.adopter.username} ↔ {self.pet.name}: {self.compatibility_score:.1f}%"
+
+
+class AdoptionOutcome(models.Model):
+    """
+    Tracks the outcome of adoptions (successful or not) for ML model retraining.
+    Used to improve matching algorithm over time.
+    """
+    SUCCESSFUL = 'successful'
+    UNSUCCESSFUL = 'unsuccessful'
+    UNKNOWN = 'unknown'
+    
+    OUTCOME_CHOICES = [
+        (SUCCESSFUL, 'Successful (Happy Adoption)'),
+        (UNSUCCESSFUL, 'Unsuccessful (Returned/Failed)'),
+        (UNKNOWN, 'Unknown'),
+    ]
+    
+    application = models.OneToOneField(
+        AdoptionApplication,
+        on_delete=models.CASCADE,
+        related_name='adoption_outcome'
+    )
+    
+    # Outcome classification
+    outcome = models.CharField(
+        max_length=20,
+        choices=OUTCOME_CHOICES,
+        default=UNKNOWN
+    )
+    
+    # How long the adoption lasted (if unsuccessful)
+    # NULL if still ongoing
+    duration_days = models.IntegerField(null=True, blank=True)
+    
+    # Feedback from adopter/rehomer
+    feedback = models.TextField(
+        blank=True,
+        help_text="Why was this adoption successful/unsuccessful?"
+    )
+    
+    # Related to original matching
+    original_matching_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="The original compatibility score for this match"
+    )
+    
+    # Used for model improvement
+    was_used_for_training = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Outcome: {self.application} - {self.outcome}"
+
+
+class MatchingAlgorithmConfig(models.Model):
+    """
+    Stores configuration and trained model weights for the matching algorithm.
+    Allows versioning of the ML model and A/B testing different models.
+    """
+    # Version identifier
+    version = models.IntegerField(unique=True)
+    name = models.CharField(
+        max_length=255,
+        help_text="Descriptive name for this model version"
+    )
+    description = models.TextField(blank=True)
+    
+    # Model configuration
+    MODEL_TYPE_CHOICES = [
+        ('cosine_similarity', 'Cosine Similarity (Vector-based)'),
+        ('weighted_average', 'Weighted Average'),
+        ('ml_trained', 'ML Model (Scikit-learn/PyTorch)'),
+        ('hybrid', 'Hybrid Approach'),
+    ]
+    model_type = models.CharField(
+        max_length=50,
+        choices=MODEL_TYPE_CHOICES,
+        default='cosine_similarity'
+    )
+    
+    # Model weights/parameters (JSON)
+    # Different structure depending on model_type
+    # Examples:
+    # - cosine_similarity: {trait_weights: {...}, threshold: 0.3}
+    # - ml_trained: {model_path: "path/to/model.pkl", preprocessing: {...}}
+    model_weights = models.JSONField(
+        default=dict,
+        help_text="Algorithm-specific weights and parameters"
+    )
+    
+    # Training data info
+    training_samples = models.IntegerField(
+        default=0,
+        help_text="Number of adoption outcomes used to train this model"
+    )
+    accuracy_on_training = models.FloatField(
+        default=0.0,
+        help_text="Model accuracy on training data (0-1)"
+    )
+    accuracy_on_validation = models.FloatField(
+        default=0.0,
+        help_text="Model accuracy on validation data (0-1)"
+    )
+    
+    # Whether this is the active model
+    is_active = models.BooleanField(default=False)
+    
+    # Deployment info
+    deployed_at = models.DateTimeField(null=True, blank=True)
+    previous_version = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='next_version'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-version']
+        verbose_name_plural = "Matching Algorithm Configs"
+
+    def __str__(self):
+        status = "(ACTIVE)" if self.is_active else ""
+        return f"v{self.version}: {self.name} {status}"
