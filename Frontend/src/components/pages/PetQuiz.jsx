@@ -414,6 +414,8 @@ const getTextBlob = (pet) =>
     .join(" ")
     .toLowerCase();
 
+const QUIZ_RESULTS_STORAGE_KEY = "pet-adoption-last-quiz-results";
+
 const rankValue = (level) => {
   if (level === "low" || level === "small" || level === "beginner") return 1;
   if (level === "medium" || level === "intermediate") return 2;
@@ -765,6 +767,13 @@ const PetQuiz = () => {
         .sort((left, right) => right.score - left.score)
         .slice(0, 3);
 
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          QUIZ_RESULTS_STORAGE_KEY,
+          JSON.stringify(scoredPets.map((pet) => ({ id: pet.id, matchPercentage: pet.matchPercentage }))),
+        );
+      }
+
       setResults(scoredPets);
       return;
     }
@@ -813,6 +822,10 @@ const PetQuiz = () => {
   const restartQuiz = () => {
     if (autoAdvanceTimeoutRef.current) {
       clearTimeout(autoAdvanceTimeoutRef.current);
+    }
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(QUIZ_RESULTS_STORAGE_KEY);
     }
 
     setStarted(false);

@@ -19,7 +19,7 @@ const getRouteLabel = (type) => {
 const getRedirectPath = (role) => {
   if (role === "rehomer") return "/rehomer-dashboard";
   if (role === "shelter_admin" || role === "platform_admin") return "/admin-dashboard";
-  return "/pets";
+  return "/";
 };
 
 const isAdminRole = (role) => role === "shelter_admin" || role === "platform_admin";

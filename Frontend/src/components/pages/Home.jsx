@@ -22,19 +22,27 @@ const CARE_TIPS = [
 
 const QUICK_ACTIONS = [
   {
-    key: "browse",
-    title: "Browse Pets",
-    subtitle: "See listings",
+    key: "adopt",
+    title: "Adopt",
+    subtitle: "Browse matches",
     icon: "🐾",
-    to: "/pets",
+    to: "/adopt",
     show: () => true,
   },
   {
     key: "quiz",
-    title: "Take Quiz",
+    title: "Quiz",
     subtitle: "Find your fit",
     icon: "✨",
     to: "/quiz",
+    show: () => true,
+  },
+  {
+    key: "vets",
+    title: "Vets",
+    subtitle: "Nearby clinics",
+    icon: "🩺",
+    to: "/vets",
     show: () => true,
   },
   {
@@ -72,6 +80,21 @@ const QUICK_ACTIONS = [
 ];
 
 const ONBOARDING_STORAGE_KEY = "hasSeenOnboarding";
+const QUIZ_RESULTS_STORAGE_KEY = "pet-adoption-last-quiz-results";
+
+const readStoredQuizMatches = () => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(QUIZ_RESULTS_STORAGE_KEY);
+    const parsedValue = storedValue ? JSON.parse(storedValue) : [];
+    return Array.isArray(parsedValue) ? parsedValue : [];
+  } catch {
+    return [];
+  }
+};
 
 const toTitleCase = (value) =>
   value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
@@ -151,6 +174,12 @@ const Home = () => {
   const [tipIndex, setTipIndex] = useState(0);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [matchShortlist, setMatchShortlist] = useState([]);
+  const [aiPromptIndex, setAiPromptIndex] = useState(0);
+  const [aiInput, setAiInput] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [aiConversation, setAiConversation] = useState([]);
+  const recognitionRef = useRef(null);
 
   const role = userData?.role || user?.role || null;
   const firstName =
@@ -175,10 +204,33 @@ const Home = () => {
         setError("");
         const response = await listPets();
         const petsData = Array.isArray(response) ? response : response?.results || [];
-        setPets(petsData.map(normalizePet));
+        const normalizedPets = petsData.map(normalizePet);
+        setPets(normalizedPets);
+
+        const storedMatches = readStoredQuizMatches();
+        const matchMap = new Map(
+          storedMatches.map((match) => [String(match.id), Number(match.matchPercentage) || 90]),
+        );
+        const matchedIds = new Set(matchMap.keys());
+
+        if (matchedIds.size > 0) {
+          const sortedMatches = normalizedPets
+            .filter((pet) => matchedIds.has(String(pet.id)))
+            .map((pet) => ({
+              ...pet,
+              matchPercentage: matchMap.get(String(pet.id)) || 90,
+            }))
+            .sort((left, right) => Number(right.matchPercentage) - Number(left.matchPercentage))
+            .slice(0, 3);
+
+          setMatchShortlist(sortedMatches);
+        } else {
+          setMatchShortlist([]);
+        }
       } catch (fetchError) {
         setError(fetchError.message || "Failed to load pets.");
         setPets([]);
+        setMatchShortlist([]);
       } finally {
         setLoading(false);
       }
@@ -210,9 +262,139 @@ const Home = () => {
   }, [pets, activeCategory, searchQuery]);
 
   const featuredPets = filteredPets.slice(0, 6);
+  const bestMatch = matchShortlist[0];
   const greetingText = user ? `Hi, ${firstName} 👋` : "Find your next furry friend";
   const feedTitle =
     searchQuery.trim() || activeCategory !== "All" ? "Matching Pets" : "Pets Near You";
+  const aiPrompts = [
+    "I want a calm, low-maintenance companion.",
+    "I need a playful dog for active days.",
+    "Something friendly and easy for my apartment.",
+  ];
+  const defaultAiResponse = user
+    ? `I can help match you with a pet that suits your routine, energy, and home. Try the quiz to sharpen the match.`
+    : "Tell me the kind of home you have, and I’ll narrow the best matches for you.";
+
+  const getAiResponse = (prompt) => {
+    const input = String(prompt || "").toLowerCase();
+
+    if (!input.trim()) {
+      return defaultAiResponse;
+    }
+
+    if (/(calm|quiet|low[- ]?maintenance|gentle|easy)/.test(input)) {
+      return "A quieter companion with lower daily stimulation usually fits best for calm routines. Try gentle, patient pets and keep the home environment predictable.";
+    }
+
+    if (/(active|dog|walk|playful|outdoor|high energy)/.test(input)) {
+      return "You probably want a high-energy match, so active dogs and playful companions are a strong fit. A daily routine with exercise and enrichment will suit them well.";
+    }
+
+    if (/(apartment|small home|compact|city|indoor)/.test(input)) {
+      return "Apartment-friendly pets often lean toward calm, adaptable companions. Cats, rabbits, and gentle social pets can do especially well in smaller spaces.";
+    }
+
+    if (/(kids|family|children)/.test(input)) {
+      return "For family life, a patient, friendly pet with a strong introduction routine usually works best. I would look for gentle temperament and a home that supports gradual adjustment.";
+    }
+
+    if (/(first[- ]?time|new adopter|beginner)/.test(input)) {
+      return "A beginner-friendly match usually needs a manageable routine, clear expectations, and a pet with a forgiving temperament. The quiz can help narrow those options quickly.";
+    }
+
+    return "That gives me a useful direction. I’d focus on your home size, activity level, and how much daily time you can realistically spend with a new pet.";
+  };
+
+  useEffect(() => {
+    if (aiConversation.length === 0) {
+      setAiConversation([{ role: "assistant", text: defaultAiResponse }]);
+    }
+  }, [defaultAiResponse, aiConversation.length]);
+
+  useEffect(() => {
+    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) {
+      return undefined;
+    }
+
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.trim();
+      if (!transcript) {
+        return;
+      }
+
+      const response = getAiResponse(transcript);
+      setAiInput(transcript);
+      setAiConversation((current) => [
+        ...current,
+        { role: "user", text: transcript },
+        { role: "assistant", text: response },
+      ]);
+    };
+
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.stop();
+    };
+  }, []);
+
+  const handleAiPrompt = (prompt) => {
+    const cleanPrompt = String(prompt || "").trim();
+    if (!cleanPrompt) {
+      return;
+    }
+
+    setAiPromptIndex(aiPrompts.indexOf(prompt));
+    setAiInput(cleanPrompt);
+    const response = getAiResponse(cleanPrompt);
+    setAiConversation((current) => [
+      ...current,
+      { role: "user", text: cleanPrompt },
+      { role: "assistant", text: response },
+    ]);
+  };
+
+  const handleAiSubmit = () => {
+    const cleanPrompt = aiInput.trim();
+    if (!cleanPrompt) {
+      return;
+    }
+
+    const response = getAiResponse(cleanPrompt);
+    setAiConversation((current) => [
+      ...current,
+      { role: "user", text: cleanPrompt },
+      { role: "assistant", text: response },
+    ]);
+    setAiInput("");
+  };
+
+  const handleVoiceInput = () => {
+    if (!recognitionRef.current) {
+      setAiConversation((current) => [
+        ...current,
+        { role: "assistant", text: "Voice input is not available in this browser. You can still type your preference below." },
+      ]);
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    setIsListening(true);
+    recognitionRef.current.start();
+  };
 
   const handleFinishOnboarding = () => {
     if (typeof window !== "undefined") {
@@ -310,6 +492,79 @@ const Home = () => {
           width: 160px; height: 160px;
           background: rgba(255,255,255,0.06);
           border-radius: 50%;
+        }
+
+        .hp-hero-row {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          position: relative;
+          z-index: 1;
+        }
+
+        .hp-hero-copy {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .hp-heartbeat-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 132px;
+          height: 132px;
+          flex-shrink: 0;
+        }
+
+        .hp-heartbeat-core {
+          position: relative;
+          width: 110px;
+          height: 110px;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.9), rgba(255,255,255,0.18) 45%, rgba(255,255,255,0.06) 70%, rgba(255,255,255,0.03));
+          box-shadow: 0 0 0 10px rgba(255,255,255,0.12), 0 16px 36px rgba(155,78,0,0.2);
+          animation: hp-heartbeat 2.8s ease-in-out infinite;
+        }
+
+        .hp-heartbeat-ring {
+          position: absolute;
+          inset: -10px;
+          border: 2px solid rgba(255,255,255,0.32);
+          border-radius: 50%;
+          animation: hp-ring-pulse 2.8s ease-out infinite;
+        }
+
+        .hp-heartbeat-ring--mid {
+          inset: -24px;
+          border-color: rgba(255,255,255,0.22);
+          animation-delay: 0.4s;
+        }
+
+        .hp-heartbeat-pulse {
+          display: grid;
+          place-items: center;
+          width: 58px;
+          height: 58px;
+          border-radius: 50%;
+          font-size: 28px;
+          background: rgba(255,255,255,0.2);
+          box-shadow: inset 0 0 20px rgba(255,255,255,0.22);
+        }
+
+        @keyframes hp-heartbeat {
+          0%, 100% { transform: scale(1); }
+          20% { transform: scale(1.08); }
+          35% { transform: scale(0.96); }
+          50% { transform: scale(1.12); }
+          70% { transform: scale(0.98); }
+        }
+
+        @keyframes hp-ring-pulse {
+          0% { opacity: 0.8; transform: scale(0.94); }
+          70% { opacity: 0.2; transform: scale(1.12); }
+          100% { opacity: 0; transform: scale(1.18); }
         }
 
         .hp-brand-pill {
@@ -447,6 +702,97 @@ const Home = () => {
           padding: 22px 16px 0;
         }
 
+        .hp-match-strip {
+          padding: 18px 16px 0;
+        }
+
+        .hp-match-card {
+          background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(255,247,230,0.9));
+          border: 1.5px solid rgba(245,154,35,0.2);
+          border-radius: 28px;
+          padding: 16px 14px 12px;
+          box-shadow: 0 14px 30px rgba(180,83,9,0.05);
+        }
+
+        .hp-match-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .hp-match-label {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--orange-dark);
+        }
+
+        .hp-match-link {
+          border: none;
+          background: none;
+          color: var(--orange-deeper);
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .hp-match-list {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .hp-match-item {
+          border: 1px solid rgba(245,154,35,0.18);
+          background: rgba(255,255,255,0.9);
+          border-radius: 18px;
+          overflow: hidden;
+          cursor: pointer;
+          text-align: left;
+        }
+
+        .hp-match-item img {
+          width: 100%;
+          height: 118px;
+          object-fit: cover;
+          display: block;
+        }
+
+        .hp-match-item-body {
+          padding: 10px 8px 12px;
+        }
+
+        .hp-match-name {
+          font-family: 'Playfair Display', serif;
+          font-size: 15px;
+          font-weight: 700;
+          line-height: 1.1;
+          color: var(--text-primary);
+        }
+
+        .hp-match-meta {
+          margin-top: 4px;
+          font-size: 10px;
+          color: var(--text-secondary);
+          line-height: 1.3;
+        }
+
+        .hp-match-score {
+          display: inline-flex;
+          margin-top: 8px;
+          background: var(--orange-pale);
+          color: var(--orange-deeper);
+          border-radius: 999px;
+          padding: 5px 8px;
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
         .hp-section-header {
           display: flex;
           align-items: flex-end;
@@ -483,6 +829,216 @@ const Home = () => {
           cursor: pointer;
           white-space: nowrap;
           flex-shrink: 0;
+        }
+
+        /* ── AI MATCH CARD ── */
+        .hp-room-preview {
+          margin: 18px 16px 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(255,247,230,0.95));
+          border: 1.5px solid rgba(245,154,35,0.22);
+          border-radius: 28px;
+          padding: 16px;
+          box-shadow: 0 12px 28px rgba(180,83,9,0.06);
+          display: grid;
+          grid-template-columns: 1.1fr 0.9fr;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .hp-room-preview h3 {
+          font-family: 'Playfair Display', serif;
+          font-size: 18px;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-top: 4px;
+          margin-bottom: 8px;
+          line-height: 1.2;
+        }
+
+        .hp-room-preview p {
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--text-secondary);
+        }
+
+        .hp-room-window {
+          position: relative;
+          height: 140px;
+          border-radius: 24px;
+          background: linear-gradient(180deg, #f3e6d2 0%, #f9f3ea 100%);
+          border: 1.5px solid rgba(245,154,35,0.22);
+          overflow: hidden;
+        }
+
+        .hp-room-wall {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.02));
+        }
+
+        .hp-room-sofa {
+          position: absolute;
+          left: 18px;
+          right: 22px;
+          bottom: 26px;
+          height: 36px;
+          background: linear-gradient(180deg, #c8894e, #9d6137);
+          border-radius: 18px 18px 12px 12px;
+          box-shadow: inset 0 -6px 0 rgba(0,0,0,0.08);
+        }
+
+        .hp-room-table {
+          position: absolute;
+          left: 42px;
+          right: 42px;
+          bottom: 18px;
+          height: 14px;
+          border-radius: 999px;
+          background: #d7b07d;
+        }
+
+        .hp-room-pet {
+          position: absolute;
+          right: 28px;
+          bottom: 32px;
+          width: 52px;
+          height: 52px;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          font-size: 26px;
+          background: radial-gradient(circle at 30% 30%, #fff2d2, #ffd58c 52%, #f7af4d 100%);
+          box-shadow: 0 12px 24px rgba(222,134,27,0.2);
+        }
+
+        .hp-ai-card {
+          margin: 18px 16px 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(255,245,220,0.9));
+          border: 1.5px solid rgba(245,154,35,0.26);
+          border-radius: 28px;
+          padding: 18px 16px;
+          box-shadow: 0 14px 28px rgba(180,83,9,0.08);
+        }
+
+        .hp-ai-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+
+        .hp-ai-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(245,154,35,0.12);
+          border: 1px solid rgba(245,154,35,0.2);
+          border-radius: 999px;
+          padding: 6px 10px;
+          color: var(--orange-dark);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .hp-ai-wave {
+          width: 42px;
+          height: 42px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, var(--orange), #ffd36e);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 20px;
+          box-shadow: 0 10px 22px rgba(245,154,35,0.25);
+        }
+
+        .hp-ai-chat {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 14px;
+        }
+
+        .hp-ai-message {
+          background: rgba(255,255,255,0.7);
+          border: 1px solid rgba(245,154,35,0.18);
+          border-radius: 18px;
+          padding: 12px 14px;
+          font-size: 13px;
+          line-height: 1.55;
+          color: var(--text-secondary);
+        }
+
+        .hp-ai-message--user {
+          background: rgba(255,244,214,0.9);
+          border-color: rgba(245,154,35,0.2);
+          color: var(--text-primary);
+          align-self: flex-end;
+        }
+
+        .hp-ai-prompt-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .hp-ai-prompt {
+          border: 1px solid rgba(245,154,35,0.2);
+          background: rgba(255,247,230,0.9);
+          color: var(--orange-deeper);
+          padding: 8px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .hp-ai-form {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .hp-ai-input {
+          flex: 1;
+          border: 1.5px solid rgba(245,154,35,0.2);
+          background: rgba(255,255,255,0.85);
+          color: var(--text-primary);
+          border-radius: 999px;
+          padding: 11px 14px;
+          font: inherit;
+          outline: none;
+        }
+
+        .hp-ai-button,
+        .hp-ai-voice {
+          border: none;
+          border-radius: 999px;
+          padding: 11px 14px;
+          font: inherit;
+          cursor: pointer;
+          font-weight: 700;
+        }
+
+        .hp-ai-button {
+          background: var(--orange);
+          color: white;
+        }
+
+        .hp-ai-voice {
+          background: rgba(245,154,35,0.12);
+          color: var(--orange-dark);
+          min-width: 48px;
+        }
+
+        .hp-ai-voice--active {
+          background: rgba(239,68,68,0.12);
+          color: #b91c1c;
         }
 
         /* ── QUICK ACTIONS ── */
@@ -798,8 +1354,21 @@ const Home = () => {
             <span aria-hidden="true">🐾</span>
             My FurryFriends
           </div>
-          <h1 className="hp-greeting">{greetingText}</h1>
-          <p className="hp-subtitle">Browse, save, and apply for pets looking for safe homes.</p>
+
+          <div className="hp-hero-row">
+            <div className="hp-hero-copy">
+              <h1 className="hp-greeting">{greetingText}</h1>
+              <p className="hp-subtitle">Tell me about your home, routine, and dream pet, and I’ll guide you to the right match.</p>
+            </div>
+
+            <div className="hp-heartbeat-wrap" aria-hidden="true">
+              <div className="hp-heartbeat-core">
+                <div className="hp-heartbeat-ring" />
+                <div className="hp-heartbeat-ring hp-heartbeat-ring--mid" />
+                <div className="hp-heartbeat-pulse">🐾</div>
+              </div>
+            </div>
+          </div>
         </header>
 
         {/* ── SEARCH ── */}
@@ -851,6 +1420,86 @@ const Home = () => {
           </div>
         )}
 
+        <section className="hp-room-preview" aria-label="Home preview for a new pet">
+          <div>
+            <p className="hp-section-label">Home fit check</p>
+            <h3>Scan your space and picture your next pet in it.</h3>
+            <p>Use the AI coach to describe your home, then preview a pet in your living room before you commit.</p>
+          </div>
+
+          <div className="hp-room-window" aria-hidden="true">
+            <div className="hp-room-wall" />
+            <div className="hp-room-sofa" />
+            <div className="hp-room-table" />
+            <div className="hp-room-pet">🐶</div>
+          </div>
+        </section>
+
+        {/* ── AI MATCH ASSISTANT ── */}
+        <section className="hp-ai-card" aria-label="Pet match assistant">
+          <div className="hp-ai-header">
+            <div className="hp-ai-badge">
+              <span aria-hidden="true">✨</span>
+              AI Match
+            </div>
+            <div className="hp-ai-wave" aria-hidden="true">🐾</div>
+          </div>
+
+          <div className="hp-ai-chat">
+            {aiConversation.map((message, index) => (
+              <div
+                key={`${message.role}-${index}`}
+                className={`hp-ai-message ${message.role === "user" ? "hp-ai-message--user" : ""}`}
+              >
+                {message.text}
+              </div>
+            ))}
+          </div>
+
+          <div className="hp-ai-prompt-row">
+            {aiPrompts.map((prompt, index) => (
+              <button
+                key={prompt}
+                type="button"
+                className="hp-ai-prompt"
+                onClick={() => handleAiPrompt(prompt)}
+                style={{
+                  background: aiPromptIndex === index ? "rgba(245,154,35,0.14)" : "rgba(255,247,230,0.9)",
+                }}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
+          <div className="hp-ai-form">
+            <input
+              type="text"
+              value={aiInput}
+              onChange={(event) => setAiInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  handleAiSubmit();
+                }
+              }}
+              placeholder="Tell me what kind of pet you want..."
+              className="hp-ai-input"
+              aria-label="Ask the pet match assistant"
+            />
+            <button
+              type="button"
+              className={`hp-ai-voice ${isListening ? "hp-ai-voice--active" : ""}`}
+              onClick={handleVoiceInput}
+              aria-label="Use voice input"
+            >
+              {isListening ? "●" : "🎙️"}
+            </button>
+            <button type="button" className="hp-ai-button" onClick={handleAiSubmit}>
+              Ask
+            </button>
+          </div>
+        </section>
+
         {/* ── QUICK ACTIONS ── */}
         <section className="hp-section">
           <div className="hp-section-header">
@@ -874,6 +1523,74 @@ const Home = () => {
             ))}
           </div>
         </section>
+
+        {matchShortlist.length > 0 ? (
+          <section className="hp-match-strip" aria-label="Quiz matches">
+            <div className="hp-match-card">
+              <div className="hp-match-header">
+                <span className="hp-match-label">Best for your home</span>
+                <button type="button" className="hp-match-link" onClick={() => navigate("/quiz")}>Retake quiz</button>
+              </div>
+
+              {bestMatch ? (
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  background: "linear-gradient(135deg, rgba(245,154,35,0.12), rgba(255,247,230,0.9))",
+                  border: "1px solid rgba(245,154,35,0.2)",
+                  borderRadius: "18px",
+                  padding: "14px 16px",
+                  marginBottom: "14px",
+                  color: "#1C1207",
+                }}>
+                  <div>
+                    <div style={{ fontSize: "12px", letterSpacing: "0.12em", textTransform: "uppercase", color: "#B45309", fontWeight: 700 }}>
+                      Top match
+                    </div>
+                    <div style={{ fontSize: "1.15rem", fontWeight: 800, marginTop: "4px" }}>
+                      {bestMatch.name} · {bestMatch.matchPercentage}% match
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/pet/${bestMatch.id}`)}
+                    style={{
+                      background: "#F59A23",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "999px",
+                      padding: "10px 16px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    View pet
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="hp-match-list">
+                {matchShortlist.map((pet) => (
+                  <button
+                    key={pet.id}
+                    type="button"
+                    className="hp-match-item"
+                    onClick={() => navigate(`/pet/${pet.id}`)}
+                  >
+                    <img src={pet.imageUrl} alt={pet.name} />
+                    <div className="hp-match-item-body">
+                      <div className="hp-match-name">{pet.name}</div>
+                      <div className="hp-match-meta">{pet.breed || "Mixed breed"}</div>
+                      <span className="hp-match-score">{pet.matchPercentage}% match</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {/* ── FEATURED PETS ── */}
         <section className="hp-section">

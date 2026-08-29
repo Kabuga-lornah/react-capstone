@@ -27,10 +27,9 @@ type MobileAppShellProps = {
 };
 
 const tabs = [
-  { label: "Pets", path: "/pets", icon: "paw" },
-  { label: "Pouch", path: "/pet-pouch", icon: "heart-outline" },
-  { label: "Community", path: "/community", icon: "account-group-outline" },
-  { label: "Chats", path: "/chats", icon: "chat-processing-outline" },
+  { label: "AI", path: "/", icon: "home-outline" },
+  { label: "Location", path: "/pets", icon: "map-marker-radius" },
+  { label: "Quiz", path: "/quiz", icon: "head-question-outline" },
   { label: "Profile", path: "/profile", icon: "account-circle-outline" },
 ] as const;
 

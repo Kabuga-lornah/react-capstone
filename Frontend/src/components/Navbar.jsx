@@ -27,17 +27,18 @@ const getNavLinksByRole = (role, petPouchCount, isVerifiedRehomer) => {
 
   if (role === "adopter" || role === "user") {
     return [
+      { label: "AI", to: "/" },
+      { label: "Location", to: "/vets" },
       { label: "Quiz", to: "/quiz" },
-      { label: "Community", to: "/community" },
-      { label: `Pet Pouch${typeof petPouchCount === "number" ? ` ${petPouchCount}` : ""}`, to: "/pet-pouch" },
-      { label: "My Applications", to: "/my-listing" },
+      { label: "Profile", to: "/profile" },
     ];
   }
 
   return [
+    { label: "AI", to: "/" },
+    { label: "Location", to: "/vets" },
     { label: "Quiz", to: "/quiz" },
-    { label: "Community", to: "/community" },
-    { label: "Pet Pouch", to: "/pet-pouch" },
+    { label: "Profile", to: "/profile" },
   ];
 };
 
@@ -53,19 +54,18 @@ const getMobilePrimaryLinks = (role, petPouchCount, isVerifiedRehomer, notificat
 
   if (role === "adopter" || role === "user") {
     return [
-      { label: "Home", to: "/", icon: "paw", iconOnly: true },
+      { label: "AI", to: "/", icon: "home" },
+      { label: "Location", to: "/vets", icon: "clinic" },
       { label: "Quiz", to: "/quiz", icon: "quiz" },
-      { label: "Community", to: "/community", icon: "community" },
-      { label: "Pouch", to: "/pet-pouch", icon: "petPouch", badge: typeof petPouchCount === "number" && petPouchCount > 0 ? petPouchCount : null },
-      { label: "Requests", to: "/my-listing", icon: "clipboard" },
+      { label: "Profile", to: "/profile", icon: "person" },
     ];
   }
 
   return [
-    { label: "Home", to: "/", icon: "paw", iconOnly: true },
+    { label: "AI", to: "/", icon: "home" },
+    { label: "Location", to: "/vets", icon: "clinic" },
     { label: "Quiz", to: "/quiz", icon: "quiz" },
-    { label: "Community", to: "/community", icon: "community" },
-    { label: "Pet Pouch", to: "/pet-pouch", icon: "petPouch" },
+    { label: "Profile", to: "/profile", icon: "person" },
   ];
 };
 
@@ -145,6 +145,17 @@ const renderNavIcon = (icon) => {
           <path d="M6 18.5c-1.7 0-3-1.3-3-3v-7c0-1.7 1.3-3 3-3h12c1.7 0 3 1.3 3 3v7c0 1.7-1.3 3-3 3H11l-4 3v-3H6Z" />
           <path d="M8 10h8" />
           <path d="M8 14h5" />
+        </svg>
+      );
+    case "clinic":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M7 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
+          <path d="M10 10h4" />
+          <path d="M12 8v4" />
+          <path d="M7 14h10" />
+          <path d="M4 10h2" />
+          <path d="M18 10h2" />
         </svg>
       );
     default:

@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
@@ -80,4 +80,10 @@ urlpatterns = [
     path('community/posts/<int:pk>/reaction/', CommunityPostReactionView.as_view(), name='community-post-reaction'),
     path('community/posts/<int:pk>/repost/', CommunityPostRepostView.as_view(), name='community-post-repost'),
     path('community/comments/<int:pk>/reaction/', CommunityCommentReactionView.as_view(), name='community-comment-reaction'),
+    
+    # Phase 3: Matching, Quiz, and Personality Endpoints
+    path('', include('petapp.urls_phase3')),
+
+    # Phase 4: Voice and conversational assistant endpoints
+    path('voice/', include('petapp.urls_phase4')),
 ]

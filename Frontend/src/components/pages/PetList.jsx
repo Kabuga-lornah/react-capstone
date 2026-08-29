@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { PetPouchContext } from "./PetPouchContext";
 import {
@@ -59,7 +59,22 @@ const getPetTypeValue = (pet) =>
   String(pet.type || pet.species || "other").trim().toLowerCase();
 
 const getPetTypeLabel = (pet) => toTitleCase(resolvePetType(pet));
+const QUIZ_RESULTS_STORAGE_KEY = "pet-adoption-last-quiz-results";
 const PETS_PER_PAGE = 12;
+
+const readStoredQuizMatches = () => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(QUIZ_RESULTS_STORAGE_KEY);
+    const parsedValue = storedValue ? JSON.parse(storedValue) : [];
+    return Array.isArray(parsedValue) ? parsedValue : [];
+  } catch {
+    return [];
+  }
+};
 
 const getPetStatusLabel = (pet, adoptedPets) => {
   if (adoptedPets.includes(pet.id)) {
@@ -87,11 +102,14 @@ const PetsList = () => {
   const [notification, setNotification] = useState({ show: false, text: "" });
   const [filterOpen, setFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [recommendedPets, setRecommendedPets] = useState([]);
 
   const notificationTimerRef = useRef(null);
   const { user } = useAuth();
   const { updatePetPouchCount } = useContext(PetPouchContext);
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdoptLanding = location.pathname === "/adopt" || location.pathname === "/pets";
 
   const showNotification = (text) => {
     setNotification({ show: true, text });
@@ -114,10 +132,33 @@ const PetsList = () => {
         setLoadError("");
         const response = await listPets();
         const petsData = Array.isArray(response) ? response : response?.results || [];
-        setPets(petsData.map(normalizePet));
+        const normalizedPets = petsData.map(normalizePet);
+        setPets(normalizedPets);
+
+        const storedMatches = readStoredQuizMatches();
+        const matchMap = new Map(
+          storedMatches.map((match) => [String(match.id), Number(match.matchPercentage) || 90]),
+        );
+        const matchedIds = new Set(matchMap.keys());
+
+        if (matchedIds.size > 0) {
+          const sortedRecommendations = normalizedPets
+            .filter((pet) => matchedIds.has(String(pet.id)))
+            .map((pet) => ({
+              ...pet,
+              matchPercentage: matchMap.get(String(pet.id)) || 90,
+            }))
+            .sort((left, right) => Number(right.matchPercentage) - Number(left.matchPercentage))
+            .slice(0, 4);
+
+          setRecommendedPets(sortedRecommendations);
+        } else {
+          setRecommendedPets([]);
+        }
       } catch (fetchError) {
         setLoadError(fetchError.message || "Failed to load pets. Please try again.");
         setPets([]);
+        setRecommendedPets([]);
       } finally {
         setLoading(false);
       }
@@ -239,6 +280,7 @@ const PetsList = () => {
   }, [pets, searchTerm, selectedTypes]);
 
   const activeFilterCount = selectedTypes.length;
+  const bestMatch = recommendedPets[0];
   const totalPages = Math.max(1, Math.ceil(filteredPets.length / PETS_PER_PAGE));
   const paginatedPets = useMemo(() => {
     const startIndex = (currentPage - 1) * PETS_PER_PAGE;
@@ -468,10 +510,182 @@ const PetsList = () => {
           text-decoration: underline;
         }
 
+        .pl-hero {
+          max-width: 1120px;
+          margin: 0 auto;
+          padding: 18px 16px 0;
+        }
+
+        .pl-hero-card {
+          display: grid;
+          gap: 14px;
+          background: linear-gradient(135deg, #fff1d0 0%, #ffffff 38%, #fff8ef 100%);
+          border: 1.5px solid rgba(245,154,35,0.22);
+          border-radius: 28px;
+          padding: 18px 18px 20px;
+          box-shadow: 0 18px 38px rgba(214,126,14,0.08);
+        }
+
+        .pl-hero-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          width: fit-content;
+          background: rgba(245,154,35,0.12);
+          border: 1px solid rgba(245,154,35,0.18);
+          border-radius: 999px;
+          padding: 6px 10px;
+          color: var(--orange-dark);
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .pl-hero-title {
+          font-family: 'Playfair Display', serif;
+          font-size: clamp(2rem, 4vw, 3rem);
+          line-height: 1.08;
+          color: #2c1700;
+          font-weight: 800;
+        }
+
+        .pl-hero-copy {
+          max-width: 640px;
+          color: var(--text-secondary);
+          font-size: 14px;
+          line-height: 1.6;
+        }
+
+        .pl-hero-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .pl-hero-button,
+        .pl-hero-button--secondary {
+          border-radius: 999px;
+          padding: 12px 18px;
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: transform 0.15s ease;
+        }
+
+        .pl-hero-button {
+          border: none;
+          background: var(--orange);
+          color: white;
+          box-shadow: 0 12px 28px rgba(245,154,35,0.2);
+        }
+
+        .pl-hero-button--secondary {
+          border: 1.5px solid rgba(245,154,35,0.2);
+          background: rgba(255,255,255,0.75);
+          color: var(--orange-deeper);
+        }
+
+        .pl-hero-button:active,
+        .pl-hero-button--secondary:active {
+          transform: translateY(1px);
+        }
+
         .pl-content {
           max-width: 1120px;
           margin: 0 auto;
           padding: 16px 16px calc(88px + var(--safe-bottom));
+        }
+
+        .pl-match-strip {
+          max-width: 1120px;
+          margin: 0 auto;
+          padding: 12px 16px 0;
+        }
+
+        .pl-match-card {
+          background: linear-gradient(135deg, #fffaf4 0%, #ffffff 100%);
+          border: 1px solid rgba(245,154,35,0.18);
+          border-radius: 24px;
+          padding: 18px 18px 12px;
+          box-shadow: 0 16px 30px rgba(214,126,14,0.06);
+        }
+
+        .pl-match-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .pl-match-title {
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--orange-deeper);
+        }
+
+        .pl-match-link {
+          border: none;
+          background: none;
+          color: var(--orange-deeper);
+          font-weight: 700;
+          font-size: 12px;
+          cursor: pointer;
+        }
+
+        .pl-match-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .pl-match-item {
+          border: 1px solid rgba(245,154,35,0.14);
+          background: rgba(255,255,255,0.82);
+          border-radius: 18px;
+          overflow: hidden;
+          cursor: pointer;
+        }
+
+        .pl-match-item img {
+          display: block;
+          width: 100%;
+          height: 110px;
+          object-fit: cover;
+        }
+
+        .pl-match-item-body {
+          padding: 10px 10px 12px;
+        }
+
+        .pl-match-item-name {
+          font-family: 'Playfair Display', serif;
+          font-size: 15px;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+
+        .pl-match-item-meta {
+          font-size: 11px;
+          color: var(--text-secondary);
+          margin-top: 4px;
+        }
+
+        .pl-match-score {
+          display: inline-flex;
+          margin-top: 8px;
+          background: var(--orange-pale);
+          color: var(--orange-deeper);
+          border-radius: 999px;
+          padding: 5px 8px;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
         }
 
         .pl-msg {
@@ -886,6 +1100,106 @@ const PetsList = () => {
           ) : null}
         </div>
       </div>
+
+      {recommendedPets.length > 0 ? (
+        <div className="pl-match-strip">
+          <div className="pl-match-card">
+            <div className="pl-match-header">
+              <span className="pl-match-title">Best for your home</span>
+              <button type="button" className="pl-match-link" onClick={() => navigate("/quiz")}>Take quiz again</button>
+            </div>
+
+            {bestMatch ? (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                background: "linear-gradient(135deg, rgba(245,154,35,0.12), rgba(255,247,230,0.9))",
+                border: "1px solid rgba(245,154,35,0.2)",
+                borderRadius: "18px",
+                padding: "14px 16px",
+                marginBottom: "14px",
+              }}>
+                <div>
+                  <div style={{ fontSize: "11px", letterSpacing: "0.12em", textTransform: "uppercase", color: "#B45309", fontWeight: 700 }}>
+                    Top match
+                  </div>
+                  <div style={{ fontSize: "1.05rem", fontWeight: 800, marginTop: "4px" }}>
+                    {bestMatch.name} · {bestMatch.matchPercentage}% match
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/pet/${bestMatch.id}`)}
+                  style={{
+                    background: "#F59A23",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "999px",
+                    padding: "10px 16px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Meet them
+                </button>
+              </div>
+            ) : null}
+
+            <div className="pl-match-grid">
+              {recommendedPets.map((pet) => (
+                <button
+                  key={pet.id}
+                  type="button"
+                  className="pl-match-item"
+                  onClick={() => navigate(`/pet/${pet.id}`)}
+                  aria-label={`View ${pet.name} details`}
+                >
+                  <img src={pet.imageUrl} alt={pet.name} />
+                  <div className="pl-match-item-body">
+                    <div className="pl-match-item-name">{pet.name}</div>
+                    <div className="pl-match-item-meta">
+                      {pet.breed || "Mixed breed"} • {pet.age || "Age not listed"}
+                    </div>
+                    <span className="pl-match-score">
+                      {pet.matchPercentage}% match
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isAdoptLanding ? (
+        <div className="pl-hero">
+          <div className="pl-hero-card">
+            <div className="pl-hero-pill">
+              <span aria-hidden="true">🐾</span>
+              Adopt with confidence
+            </div>
+
+            <div>
+              <h1 className="pl-hero-title">Find the right companion for your life.</h1>
+            </div>
+
+            <p className="pl-hero-copy">
+              Choose a pet that fits your home, routine, and energy. Take the compatibility quiz for a faster match, then browse verified listings and book a visit when the fit feels right.
+            </p>
+
+            <div className="pl-hero-actions">
+              <button type="button" className="pl-hero-button" onClick={() => navigate("/quiz")}>
+                Take the quiz
+              </button>
+              <button type="button" className="pl-hero-button--secondary" onClick={() => navigate("/pet-pouch")}>
+                View saved pets
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <main className="pl-content">
         {actionMessage.text ? (

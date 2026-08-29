@@ -69,17 +69,40 @@ WSGI_APPLICATION = 'petproject.wsgi.application'
 
 
 # Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+# Default to SQLite for local development so the app works out of the box.
+# If a PostgreSQL connection is explicitly configured via environment variables,
+# it will be used instead.
+
+def _get_database_config():
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        return {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('POSTGRES_DB', 'pet'),
+            'USER': os.getenv('POSTGRES_USER', 'pet_user'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', '123456'),
+            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        }
+
+    if os.getenv('POSTGRES_DB') or os.getenv('POSTGRES_USER'):
+        return {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('POSTGRES_DB', 'pet'),
+            'USER': os.getenv('POSTGRES_USER', 'pet_user'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', '123456'),
+            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        }
+
+    return {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'pet',
-        'USER': 'pet_user',
-        'PASSWORD': '123456',
-        'HOST': 'localhost',
-        'PORT': '5433',
-    }
+    'default': _get_database_config(),
 }
 
 

@@ -21,6 +21,7 @@ import AdminDashboard from "./components/pages/AdminDashboard";
 import Community from "./components/pages/Community";
 import ChatThread from "./components/pages/ChatThread";
 import UserProfile from "./components/pages/UserProfile";
+import VetLocator from "./components/pages/VetLocator";
 
 // ProtectedRoute component remains outside App
 const ProtectedRoute = ({ children, isRehomer = false, isAdmin = false }) => {
@@ -51,16 +52,18 @@ function AppWrapper() {
         <Navbar />
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<PetsList />} />
+          <Route path="/" element={<Home />} />
           <Route path="/welcome" element={<Home />} />
           <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
           <Route path="/login" element={<Navigate to="/login/user" replace />} />
           <Route path="/login/:type" element={<Login />} />
           <Route path="/signup" element={<Navigate to="/signup/user" replace />} />
           <Route path="/signup/:type" element={<Signup />} />
+          <Route path="/adopt" element={<PetsList />} />
           <Route path="/pets" element={<PetsList />} />
           <Route path="/pet/:id" element={<PetDetail />} />
           <Route path="/quiz" element={<PetQuiz />} />
+          <Route path="/vets" element={<VetLocator />} />
           <Route path="/blog" element={<Blog />} />
           <Route path="/my-listing" element={<MyListings />} />
           <Route path="/contact" element={<ContactUs />} />

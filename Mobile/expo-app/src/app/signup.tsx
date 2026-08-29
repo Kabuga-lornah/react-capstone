@@ -44,7 +44,7 @@ const getRedirectPath = (role: string) => {
     return "/admin-dashboard";
   }
 
-  return "/pets";
+  return "/";
 };
 
 const typeConfig = {
