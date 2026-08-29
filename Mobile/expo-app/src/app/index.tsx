@@ -54,7 +54,7 @@ const isAdminRole = (role: string) =>
   role === "shelter_admin" || role === "platform_admin";
 
 export default function LoginScreen() {
-  const { setAuthenticatedUser } = useAuth();
+  const { setAuthenticatedUser, userData, isReady } = useAuth();
   const params = useLocalSearchParams<{
     email?: string;
     successMessage?: string;
@@ -79,6 +79,12 @@ export default function LoginScreen() {
   React.useEffect(() => {
     setType(initialType);
   }, [initialType]);
+
+  React.useEffect(() => {
+    if (isReady && userData) {
+      router.replace("/pets");
+    }
+  }, [isReady, userData]);
 
   React.useEffect(() => {
     let isActive = true;
@@ -108,6 +114,7 @@ export default function LoginScreen() {
       isActive = false;
     };
   }, []);
+
 
   if (isCheckingOnboarding) {
     return (

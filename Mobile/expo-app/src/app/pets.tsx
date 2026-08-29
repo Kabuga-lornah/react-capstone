@@ -1,103 +1,510 @@
 import { router } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
+  Animated,
   Pressable,
-  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { Image } from "expo-image";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
-import { listPets } from "@/lib/api";
+import { useAuth } from "@/context/auth";
 import { MobileAppShell } from "@/components/mobile-app-shell";
 
-type PetRecord = {
-  id: string;
-  name: string;
-  type: string;
-  breed?: string;
-  species?: string;
-  custom_species?: string;
-  status?: string;
-  city?: string;
-  location?: string;
-  imageUrl: string;
+const AI_PROMPTS = [
+  "I want a calm, low-maintenance companion.",
+  "I need a playful dog for active days.",
+  "Something friendly and easy for my apartment.",
+];
+
+const AI_RESPONSES = {
+  default:
+    "Tell me about your home, routine, and what kind of pet energy matches your lifestyle. I'll guide you to the perfect match.",
+  calm: "A quieter companion with lower daily stimulation usually fits best. Look for gentle, patient pets and keep the home environment predictable.",
+  active:
+    "You probably want a high-energy match—active dogs and playful companions thrive with daily exercise and enrichment.",
+  apartment:
+    "Apartment-friendly pets often lean toward calm, adaptable companions. Cats, rabbits, and gentle social pets do especially well in smaller spaces.",
 };
 
-const toTitleCase = (value?: string) =>
-  value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "";
+export default function AIHomeScreen() {
+  const { userData } = useAuth();
+  const firstName = userData?.first_name || userData?.username || "Friend";
+  const [aiInput, setAiInput] = useState("");
+  const [selectedPromptIndex, setSelectedPromptIndex] = useState(-1);
+  const [heartbeatAnim] = useState(new Animated.Value(1));
 
-const resolvePetType = (pet: any) => {
-  const baseType = String(pet.type || pet.species || "other").trim().toLowerCase();
-  const customType = String(pet.custom_species || pet.species_label || "").trim();
-  const breedFallback = String(pet.breed || "").trim();
-
-  if (customType) {
-    return customType;
-  }
-
-  if (baseType === "other" && breedFallback) {
-    return breedFallback;
-  }
-
-  return baseType || "other";
-};
-
-const getPetImageUrl = (pet: any) => {
-  const mainImage = Array.isArray(pet.images)
-    ? pet.images.find((image: any) => image.is_main)
-    : null;
-  const fallbackImage = Array.isArray(pet.images) ? pet.images[0] : null;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(heartbeatAnim, {
+          toValue: 1.08,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartbeatAnim, {
+          toValue: 0.96,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartbeatAnim, {
+          toValue: 1.12,
+          duration: 600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartbeatAnim, {
+          toValue: 0.98,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(heartbeatAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start();
+  }, [heartbeatAnim]);
 
   return (
-    pet.imageUrl ||
-    pet.image_url ||
-    mainImage?.image_url ||
-    fallbackImage?.image_url ||
-    mainImage?.image ||
-    fallbackImage?.image ||
-    "https://placehold.co/600x600/FEE9BF/8E5A14?text=Pet"
-  );
-};
+    <MobileAppShell
+      title="Find your perfect match"
+      subtitle="Let's talk about your home and lifestyle"
+      scroll
+    >
+      {/* Hero with Heartbeat */}
+      <View style={styles.hero}>
+        <View style={styles.heroCopy}>
+          <Text style={styles.greeting}>Hi, {firstName} 👋</Text>
+          <Text style={styles.heroSub}>
+            Tell me about your home, and I'll help you find the right pet.
+          </Text>
+        </View>
 
-const normalizePet = (pet: any): PetRecord => ({
-  id: String(pet.id),
-  name: pet.name || "Meet this pet",
-  type: resolvePetType(pet),
-  breed: pet.breed || "",
-  species: pet.species || "",
-  custom_species: pet.custom_species || "",
-  status: pet.status || "available",
-  city: pet.city || "",
-  location: pet.location || "",
-  imageUrl: getPetImageUrl(pet),
+        <Animated.View
+          style={[
+            styles.heartbeatWrap,
+            { transform: [{ scale: heartbeatAnim }] },
+          ]}
+        >
+          <View style={styles.heartbeatCore}>
+            <View style={styles.heartbeatRing} />
+            <View style={[styles.heartbeatRing, styles.heartbeatRingMid]} />
+            <View style={styles.heartbeatPulse}>
+              <Text style={styles.heartbeatEmoji}>🐾</Text>
+            </View>
+          </View>
+        </Animated.View>
+      </View>
+
+      {/* Room Preview */}
+      <View style={styles.roomCard}>
+        <View style={styles.roomLeft}>
+          <Text style={styles.roomLabel}>Home Fit Check</Text>
+          <Text style={styles.roomTitle}>Scan your space</Text>
+          <Text style={styles.roomDesc}>
+            Describe your living room and preview a pet in it before you commit.
+          </Text>
+        </View>
+        <View style={styles.roomPreview}>
+          <View style={styles.roomWall} />
+          <View style={styles.roomSofa} />
+          <View style={styles.roomPet}>🐕</View>
+        </View>
+      </View>
+
+      {/* AI Assistant */}
+      <View style={styles.aiCard}>
+        <View style={styles.aiHeader}>
+          <View style={styles.aiBadge}>
+            <Text style={styles.aiBadgeEmoji}>✨</Text>
+            <Text style={styles.aiBadgeText}>AI Match</Text>
+          </View>
+        </View>
+
+        <View style={styles.aiPrompts}>
+          {AI_PROMPTS.map((prompt, idx) => (
+            <Pressable
+              key={idx}
+              style={[
+                styles.aiPromptBtn,
+                selectedPromptIndex === idx && styles.aiPromptBtnActive,
+              ]}
+              onPress={() => setSelectedPromptIndex(idx)}
+            >
+              <Text
+                style={[
+                  styles.aiPromptText,
+                  selectedPromptIndex === idx && styles.aiPromptTextActive,
+                ]}
+              >
+                {prompt}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View style={styles.aiInputRow}>
+          <TextInput
+            style={styles.aiInput}
+            placeholder="Tell me about your home..."
+            placeholderTextColor="#b08a58"
+            value={aiInput}
+            onChangeText={setAiInput}
+            multiline
+          />
+        </View>
+
+        <View style={styles.aiActions}>
+          <Pressable style={styles.aiVoiceBtn}>
+            <MaterialCommunityIcons name="microphone-outline" size={18} color="#f59a23" />
+          </Pressable>
+          <Pressable style={styles.aiSendBtn}>
+            <Text style={styles.aiSendBtnText}>Ask AI</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.quickActions}>
+        <Text style={styles.sectionLabel}>Quick Actions</Text>
+        <View style={styles.actionGrid}>
+          <Pressable
+            style={styles.actionBtn}
+            onPress={() => router.push("/quiz")}
+          >
+            <View style={styles.actionIcon}>❓</View>
+            <Text style={styles.actionTitle}>Quiz</Text>
+            <Text style={styles.actionSub}>Take the quiz</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionBtn}
+            onPress={() => router.push("/chats")}
+          >
+            <View style={styles.actionIcon}>💬</View>
+            <Text style={styles.actionTitle}>Chats</Text>
+            <Text style={styles.actionSub}>Message adopters</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.actionBtn}
+            onPress={() => router.push("/profile")}
+          >
+            <View style={styles.actionIcon}>👤</View>
+            <Text style={styles.actionTitle}>Profile</Text>
+            <Text style={styles.actionSub}>Your details</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Browse Pets Button */}
+      <Pressable
+        style={styles.browsePetsBtn}
+        onPress={() => router.push("/pet-pouch")}
+      >
+        <Text style={styles.browsePetsBtnText}>Browse All Pets</Text>
+      </Pressable>
+
+      <View style={styles.spacer} />
+    </MobileAppShell>
+  );
+}
+
+const styles = StyleSheet.create({
+  hero: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    gap: 12,
+  },
+  heroCopy: {
+    flex: 1,
+  },
+  greeting: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1c1207",
+    marginBottom: 4,
+  },
+  heroSub: {
+    fontSize: 13,
+    color: "#6b4e2a",
+    lineHeight: 1.5,
+  },
+  heartbeatWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 96,
+    height: 96,
+  },
+  heartbeatCore: {
+    position: "relative",
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 154, 35, 0.3)",
+    shadowColor: "#b45309",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 5,
+  },
+  heartbeatRing: {
+    position: "absolute",
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.4)",
+  },
+  heartbeatRingMid: {
+    width: 124,
+    height: 124,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  heartbeatPulse: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 24,
+  },
+  heartbeatEmoji: {
+    fontSize: 20,
+  },
+  roomCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "rgba(245, 154, 35, 0.2)",
+    padding: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  roomLeft: {
+    flex: 1,
+  },
+  roomLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#d97706",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  roomTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1c1207",
+    marginBottom: 4,
+  },
+  roomDesc: {
+    fontSize: 11,
+    color: "#6b4e2a",
+    lineHeight: 1.4,
+  },
+  roomPreview: {
+    width: 100,
+    height: 80,
+    backgroundColor: "linear-gradient(180deg, #f3e6d2 0%, #f9f3ea 100%)",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "rgba(245, 154, 35, 0.2)",
+    position: "relative",
+    overflow: "hidden",
+  },
+  roomWall: {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+  },
+  roomSofa: {
+    position: "absolute",
+    left: 8,
+    right: 8,
+    bottom: 12,
+    height: 20,
+    backgroundColor: "#a0622f",
+    borderRadius: 10,
+  },
+  roomPet: {
+    position: "absolute",
+    right: 12,
+    bottom: 16,
+    fontSize: 28,
+  },
+  aiCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: "rgba(255, 245, 220, 0.9)",
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "rgba(245, 154, 35, 0.26)",
+    padding: 14,
+  },
+  aiHeader: {
+    marginBottom: 12,
+  },
+  aiBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(245, 154, 35, 0.12)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignSelf: "flex-start",
+  },
+  aiBadgeEmoji: {
+    fontSize: 12,
+  },
+  aiBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#d97706",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  aiPrompts: {
+    gap: 6,
+    marginBottom: 12,
+  },
+  aiPromptBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(255, 247, 230, 0.9)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(245, 154, 35, 0.2)",
+  },
+  aiPromptBtnActive: {
+    backgroundColor: "rgba(245, 154, 35, 0.14)",
+    borderColor: "rgba(245, 154, 35, 0.4)",
+  },
+  aiPromptText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#b45309",
+  },
+  aiPromptTextActive: {
+    color: "#1c1207",
+    fontWeight: "700",
+  },
+  aiInputRow: {
+    marginBottom: 10,
+  },
+  aiInput: {
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "rgba(245, 154, 35, 0.2)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 12,
+    color: "#1c1207",
+    minHeight: 44,
+  },
+  aiActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  aiVoiceBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(245, 154, 35, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiSendBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#f59a23",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aiSendBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  quickActions: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#d97706",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  },
+  actionGrid: {
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
+  },
+  actionBtn: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(245, 154, 35, 0.15)",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: "center",
+  },
+  actionIcon: {
+    fontSize: 24,
+    marginBottom: 6,
+  },
+  actionTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1c1207",
+    marginBottom: 2,
+  },
+  actionSub: {
+    fontSize: 9,
+    color: "#9d7a52",
+  },
+  browsePetsBtn: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: "#f59a23",
+    borderRadius: 20,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  browsePetsBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  spacer: {
+    height: 24,
+  },
 });
 
-const getPetTypeValue = (pet: PetRecord) => String(pet.type || "other").trim().toLowerCase();
-const getPetTypeLabel = (pet: PetRecord) => toTitleCase(pet.type);
-
-export default function PetsScreen() {
-  const [pets, setPets] = useState<PetRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedType, setSelectedType] = useState("all");
-
-  const fetchPets = async (isRefreshing = false) => {
-    try {
-      if (isRefreshing) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
-      setLoadError("");
-      const response = await listPets();
       const petsData = Array.isArray(response) ? response : response?.results || [];
       setPets(petsData.map(normalizePet));
     } catch (error: any) {
