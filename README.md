@@ -1,18 +1,16 @@
 # Pet Adoption Platform
 
-A full-stack pet adoption application with a Django REST API backend, a React/Vite web frontend, and an Expo mobile app. The platform supports browsing pets, submitting adoption applications, managing wishlists, and interacting through community features.
+A full-stack pet adoption application with a Django REST API backend and an Expo React Native app. The mobile app opens on a talking AI companion that asks what you want to adopt, then shows matching pets one at a time.
 
 ## Project Structure
 
 - Backend: Django REST Framework API
-- Frontend: React + Vite + Tailwind CSS
 - Mobile: Expo + React Native
 
 ## Tech Stack
 
 - Backend: Python, Django, Django REST Framework, JWT authentication
-- Frontend: React, Vite, React Router, Material UI
-- Mobile: Expo, React Native
+- Mobile: Expo, React Native, Expo Router
 
 ## Prerequisites
 
@@ -54,26 +52,6 @@ A full-stack pet adoption application with a Django REST API backend, a React/Vi
 The API will be available at:
 - http://127.0.0.1:8000/
 
-## Frontend Setup
-
-1. Open the frontend folder:
-   ```bash
-   cd Frontend
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-The web app will be available at:
-- http://localhost:5173/
-
 ## Mobile App Setup
 
 1. Open the mobile app folder:
@@ -86,10 +64,16 @@ The web app will be available at:
    npm install
    ```
 
-3. Start the Expo web app:
+3. Start Expo:
    ```bash
-   npm run web
+   npm start
    ```
+
+Or run the web preview:
+
+```bash
+npm run web
+```
 
 ## Notes
 

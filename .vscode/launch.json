@@ -2,16 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Frontend: Run Vite website",
-      "type": "pwa-node",
-      "request": "launch",
-      "command": "npm",
-      "args": ["run", "dev"],
-      "cwd": "${workspaceFolder}/Frontend",
-      "runtimeExecutable": "npm",
-      "console": "integratedTerminal"
-    },
-    {
       "name": "Mobile: Run Expo web app",
       "type": "pwa-node",
       "request": "launch",
@@ -20,15 +10,6 @@
       "cwd": "${workspaceFolder}/Mobile/expo-app",
       "runtimeExecutable": "npm",
       "console": "integratedTerminal"
-    }
-  ],
-  "compounds": [
-    {
-      "name": "Start both Frontend and Mobile",
-      "configurations": [
-        "Frontend: Run Vite website",
-        "Mobile: Run Expo web app"
-      ]
     }
   ]
 }

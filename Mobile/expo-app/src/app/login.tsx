@@ -1,5 +1,6 @@
 import { Link, router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,12 +15,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/auth";
-import { registerUser } from "@/lib/api";
+import { API_BASE_URL, clearTokens, getCurrentUser, loginUser } from "@/lib/api";
 import { signInWithGoogle } from "@/lib/googleAuth";
+import { hasSeenOnboarding } from "@/lib/onboarding";
 
-type SignupType = "user" | "rehomer";
+type LoginType = "user" | "rehomer";
+type MessageState = { type: "" | "success" | "error"; text: string };
 
-const mapRouteTypeToRole = (type: SignupType) => {
+const mapRouteTypeToRole = (type: LoginType) => {
   if (type === "rehomer") {
     return "rehomer";
   }
@@ -27,7 +30,7 @@ const mapRouteTypeToRole = (type: SignupType) => {
   return "adopter";
 };
 
-const getRouteLabel = (type: SignupType) => {
+const getRouteLabel = (type: LoginType) => {
   if (type === "rehomer") {
     return "Rehomer";
   }
@@ -47,120 +50,164 @@ const getRedirectPath = (role: string) => {
   return "/";
 };
 
-const typeConfig = {
-  user: {
-    eyebrow: "Join as an adopter",
-    title: "Create your account",
-    sub: "Start browsing pets and save the ones that feel right for you.",
-  },
-  rehomer: {
-    eyebrow: "Join as a rehomer",
-    title: "Create your rehomer account",
-    sub: "Set up your details so adopters can trust and contact you later.",
-  },
-} as const;
+const isAdminRole = (role: string) =>
+  role === "shelter_admin" || role === "platform_admin";
 
-export default function SignupScreen() {
-  const { setAuthenticatedUser } = useAuth();
-  const params = useLocalSearchParams<{ type?: string }>();
-  const type: SignupType = params.type === "rehomer" ? "rehomer" : "user";
-  const cfg = typeConfig[type];
-
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    phoneNumber: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
+export default function LoginScreen() {
+  const { setAuthenticatedUser, userData, isReady } = useAuth();
+  const params = useLocalSearchParams<{
+    email?: string;
+    successMessage?: string;
+    type?: string;
+  }>();
+  const initialType = params.type === "rehomer" ? "rehomer" : "user";
+  const [type, setType] = useState<LoginType>("user");
+  const [email, setEmail] = useState(typeof params.email === "string" ? params.email : "");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true);
+  const [message, setMessage] = useState<MessageState>(
+    typeof params.successMessage === "string"
+      ? { type: "success", text: params.successMessage }
+      : { type: "", text: "" },
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
-  const passwordStrength = useMemo(() => {
-    const { password } = formData;
-    if (!password) return { level: 0, label: "" };
-    if (password.length < 6) return { level: 1, label: "Too short" };
-    if (password.length < 8) return { level: 2, label: "Weak" };
-    if (/[A-Z]/.test(password) || /[^a-zA-Z0-9]/.test(password)) {
-      return { level: 4, label: "Strong" };
+  const currentBaseUrl = useMemo(() => API_BASE_URL, []);
+
+  React.useEffect(() => {
+    setType(initialType);
+  }, [initialType]);
+
+  React.useEffect(() => {
+    if (isReady && userData) {
+      router.replace(getRedirectPath(userData.role));
     }
-    return { level: 3, label: "Good" };
-  }, [formData]);
+  }, [isReady, userData]);
 
-  const updateField = (field: keyof typeof formData, value: string) => {
-    setFormData((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  };
+  React.useEffect(() => {
+    let isActive = true;
 
-  const validateForm = () => {
-    const firstName = formData.firstName.trim();
-    const lastName = formData.lastName.trim();
-    const phoneNumber = formData.phoneNumber.trim();
-    const email = formData.email.trim().toLowerCase();
+    const checkOnboarding = async () => {
+      try {
+        const seenOnboarding = await hasSeenOnboarding();
 
-    if (!firstName) return "First name is required.";
-    if (!lastName) return "Last name is required.";
-    if (!phoneNumber) return "Phone number is required.";
-    if (!email) return "Email address is required.";
-    if (formData.password.length < 6) return "Password must be at least 6 characters.";
-    if (formData.password !== formData.confirmPassword) return "Passwords do not match.";
+        if (!isActive) {
+          return;
+        }
 
-    return "";
-  };
+        if (!seenOnboarding) {
+          router.replace("/welcome");
+          return;
+        }
+      } finally {
+        if (isActive) {
+          setIsCheckingOnboarding(false);
+        }
+      }
+    };
+
+    void checkOnboarding();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  if (isCheckingOnboarding) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator color="#F18700" size="large" />
+        <Text style={styles.loadingText}>Preparing your welcome experience...</Text>
+      </View>
+    );
+  }
 
   const handleSubmit = async () => {
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
+    if (!email.trim() || !password.trim()) {
+      setMessage({ type: "error", text: "Enter your email and password first." });
       return;
     }
 
-    setError("");
+    setMessage({ type: "", text: "" });
     setIsSubmitting(true);
 
     try {
-      const normalizedEmail = formData.email.trim().toLowerCase();
-      await registerUser({
+      const normalizedEmail = email.trim().toLowerCase();
+      const expectedRole = mapRouteTypeToRole(type);
+      const tokenResponse = await loginUser({
         username: normalizedEmail,
-        email: normalizedEmail,
-        password: formData.password,
-        first_name: formData.firstName.trim(),
-        last_name: formData.lastName.trim(),
-        phone_number: formData.phoneNumber.trim(),
-        role: mapRouteTypeToRole(type),
+        password,
       });
+      const profile = await getCurrentUser();
 
-      router.replace({
-        pathname: "/login",
-        params: {
-          type,
-          email: normalizedEmail,
-          successMessage: "Account created successfully. Please log in to continue.",
-        },
+      if (isAdminRole(profile.role)) {
+        setAuthenticatedUser(profile, {
+          access: tokenResponse.access,
+          refresh: tokenResponse.refresh,
+        });
+        router.replace(getRedirectPath(profile.role));
+        return;
+      }
+
+      if (profile.role !== expectedRole) {
+        clearTokens();
+        setMessage({
+          type: "error",
+          text: `Please login through the ${
+            profile.role === "rehomer" ? "rehomer" : "user"
+          } login page.`,
+        });
+        return;
+      }
+
+      setAuthenticatedUser(profile, {
+        access: tokenResponse.access,
+        refresh: tokenResponse.refresh,
       });
-    } catch (submitError: any) {
-      setError(submitError?.message || "Signup failed. Please try again.");
+      router.replace(getRedirectPath(profile.role));
+    } catch (error: any) {
+      setMessage({
+        type: "error",
+        text: error?.message || "Login failed. Please try again.",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleGoogleSignup = async () => {
-    setError("");
+  const handleGoogleLogin = async () => {
+    setMessage({ type: "", text: "" });
     setIsGoogleSubmitting(true);
 
     try {
-      const response = await signInWithGoogle(mapRouteTypeToRole(type));
+      const expectedRole = mapRouteTypeToRole(type);
+      const response = await signInWithGoogle(expectedRole as "adopter" | "rehomer");
       const profile = response.user;
 
       if (!profile) {
-        throw new Error("Google signup finished, but no profile was returned.");
+        throw new Error("Google login finished, but no profile was returned.");
+      }
+
+      if (isAdminRole(profile.role)) {
+        setAuthenticatedUser(profile, {
+          access: response.access,
+          refresh: response.refresh,
+        });
+        router.replace(getRedirectPath(profile.role));
+        return;
+      }
+
+      if (profile.role !== expectedRole) {
+        clearTokens();
+        setMessage({
+          type: "error",
+          text: `Please login through the ${
+            profile.role === "rehomer" ? "rehomer" : "user"
+          } login page.`,
+        });
+        return;
       }
 
       setAuthenticatedUser(profile, {
@@ -168,8 +215,11 @@ export default function SignupScreen() {
         refresh: response.refresh,
       });
       router.replace(getRedirectPath(profile.role));
-    } catch (submitError: any) {
-      setError(submitError?.message || "Google signup failed. Please try again.");
+    } catch (error: any) {
+      setMessage({
+        type: "error",
+        text: error?.message || "Google login failed. Please try again.",
+      });
     } finally {
       setIsGoogleSubmitting(false);
     }
@@ -198,20 +248,21 @@ export default function SignupScreen() {
             </View>
 
             <View style={styles.heroSection}>
-              <Text style={styles.eyebrow}>{cfg.eyebrow}</Text>
-              <Text style={styles.heroTitle}>{cfg.title}</Text>
-              <Text style={styles.heroSub}>{cfg.sub}</Text>
+              <Text style={styles.heroTitle}>Welcome back</Text>
+              <Text style={styles.heroSub}>
+                Sign in and continue where you left off.
+              </Text>
             </View>
 
             <View style={styles.card}>
               <View style={styles.tabRow}>
                 {[
-                  { key: "user" as const, label: "Adopter" },
-                  { key: "rehomer" as const, label: "Rehomer" },
+                  { key: "user" as const, label: "Find a pet" },
+                  { key: "rehomer" as const, label: "Rehome a pet" },
                 ].map((option) => (
                   <Pressable
                     key={option.key}
-                    onPress={() => router.replace({ pathname: "/signup", params: { type: option.key } })}
+                    onPress={() => setType(option.key)}
                     style={[
                       styles.tabButton,
                       type === option.key ? styles.tabButtonActive : null,
@@ -229,48 +280,18 @@ export default function SignupScreen() {
                 ))}
               </View>
 
-              {error ? (
-                <View style={styles.errorBox}>
-                  <Text style={styles.errorText}>{error}</Text>
+              {message.text ? (
+                <View
+                  style={[
+                    styles.messageBox,
+                    message.type === "success"
+                      ? styles.messageBoxSuccess
+                      : styles.messageBoxError,
+                  ]}
+                >
+                  <Text style={styles.messageText}>{message.text}</Text>
                 </View>
               ) : null}
-
-              <View style={styles.row}>
-                <View style={styles.half}>
-                  <Text style={styles.label}>First name</Text>
-                  <TextInput
-                    autoCapitalize="words"
-                    onChangeText={(value) => updateField("firstName", value)}
-                    placeholder="Jane"
-                    placeholderTextColor="#B08A58"
-                    style={styles.input}
-                    value={formData.firstName}
-                  />
-                </View>
-                <View style={styles.half}>
-                  <Text style={styles.label}>Last name</Text>
-                  <TextInput
-                    autoCapitalize="words"
-                    onChangeText={(value) => updateField("lastName", value)}
-                    placeholder="Doe"
-                    placeholderTextColor="#B08A58"
-                    style={styles.input}
-                    value={formData.lastName}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Phone number</Text>
-                <TextInput
-                  keyboardType="phone-pad"
-                  onChangeText={(value) => updateField("phoneNumber", value)}
-                  placeholder="+254 700 000 000"
-                  placeholderTextColor="#B08A58"
-                  style={styles.input}
-                  value={formData.phoneNumber}
-                />
-              </View>
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Email address</Text>
@@ -278,11 +299,11 @@ export default function SignupScreen() {
                   autoCapitalize="none"
                   autoComplete="email"
                   keyboardType="email-address"
-                  onChangeText={(value) => updateField("email", value)}
+                  onChangeText={setEmail}
                   placeholder="hello@example.com"
                   placeholderTextColor="#B08A58"
                   style={styles.input}
-                  value={formData.email}
+                  value={email}
                 />
               </View>
 
@@ -291,15 +312,15 @@ export default function SignupScreen() {
                 <View style={styles.passwordShell}>
                   <TextInput
                     autoCapitalize="none"
-                    onChangeText={(value) => updateField("password", value)}
-                    placeholder="At least 6 characters"
+                    onChangeText={setPassword}
+                    placeholder="Enter your password"
                     placeholderTextColor="#B08A58"
                     secureTextEntry={!showPassword}
                     style={[styles.input, styles.passwordInput]}
-                    value={formData.password}
+                    value={password}
                   />
                   <Pressable
-                    onPress={() => setShowPassword((current) => !current)}
+                    onPress={() => setShowPassword((currentValue) => !currentValue)}
                     style={styles.passwordToggle}
                   >
                     <Text style={styles.passwordToggleText}>
@@ -307,84 +328,42 @@ export default function SignupScreen() {
                     </Text>
                   </Pressable>
                 </View>
-                {passwordStrength.label ? (
-                  <View style={styles.strengthWrap}>
-                    {[1, 2, 3, 4].map((level) => (
-                      <View
-                        key={level}
-                        style={[
-                          styles.strengthBar,
-                          {
-                            backgroundColor:
-                              level <= passwordStrength.level
-                                ? passwordStrength.level <= 2
-                                  ? "#F59E0B"
-                                  : passwordStrength.level === 3
-                                    ? "#E87E00"
-                                    : "#22C55E"
-                                : "rgba(210,160,60,0.2)",
-                          },
-                        ]}
-                      />
-                    ))}
-                    <Text style={styles.strengthLabel}>{passwordStrength.label}</Text>
-                  </View>
-                ) : null}
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Confirm password</Text>
-                <View style={styles.passwordShell}>
-                  <TextInput
-                    autoCapitalize="none"
-                    onChangeText={(value) => updateField("confirmPassword", value)}
-                    placeholder="Type your password again"
-                    placeholderTextColor="#B08A58"
-                    secureTextEntry={!showConfirmPassword}
-                    style={[styles.input, styles.passwordInput]}
-                    value={formData.confirmPassword}
-                  />
-                  <Pressable
-                    onPress={() => setShowConfirmPassword((current) => !current)}
-                    style={styles.passwordToggle}
-                  >
-                    <Text style={styles.passwordToggleText}>
-                      {showConfirmPassword ? "Hide" : "Show"}
-                    </Text>
-                  </Pressable>
-                </View>
+              <View style={styles.forgotWrap}>
+                <Text style={styles.forgotText}>Forgot password?</Text>
               </View>
 
               <Pressable
                 disabled={isSubmitting}
                 onPress={handleSubmit}
                 style={({ pressed }) => [
-                  styles.submitButton,
-                  pressed && !isSubmitting ? styles.submitButtonPressed : null,
-                  isSubmitting ? styles.submitButtonDisabled : null,
+                  styles.loginButton,
+                  pressed && !isSubmitting ? styles.loginButtonPressed : null,
+                  isSubmitting ? styles.loginButtonDisabled : null,
                 ]}
               >
                 {isSubmitting ? (
                   <View style={styles.buttonBusyState}>
                     <ActivityIndicator color="#FFFFFF" size="small" />
-                    <Text style={styles.submitButtonText}>Creating account...</Text>
+                    <Text style={styles.loginButtonText}>Logging in...</Text>
                   </View>
                 ) : (
-                  <Text style={styles.submitButtonText}>
-                    {`Create ${getRouteLabel(type)} account`}
+                  <Text style={styles.loginButtonText}>
+                    {`Log in as ${getRouteLabel(type)}`}
                   </Text>
                 )}
               </Pressable>
 
               <View style={styles.dividerRow}>
                 <View style={styles.dividerLine} />
-                <Text style={styles.dividerLabel}>or sign up with</Text>
+                <Text style={styles.dividerLabel}>or continue with</Text>
                 <View style={styles.dividerLine} />
               </View>
 
               <Pressable
                 disabled={isGoogleSubmitting}
-                onPress={handleGoogleSignup}
+                onPress={handleGoogleLogin}
                 style={({ pressed }) => [
                   styles.googleButton,
                   pressed && !isGoogleSubmitting ? styles.googleButtonPressed : null,
@@ -397,16 +376,29 @@ export default function SignupScreen() {
               </Pressable>
 
               <Text style={styles.footerText}>
-                Already have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <Link
                   href={{
-                    pathname: "/login",
+                    pathname: "/signup",
                     params: { type },
                   }}
                   style={styles.footerLink}
                 >
-                  Log in
+                  Sign up free
                 </Link>
+              </Text>
+
+              <Pressable onPress={() => router.push("/welcome")} style={styles.helperButton}>
+                <MaterialCommunityIcons
+                  color="#C16D00"
+                  name="map-marker-path"
+                  size={16}
+                />
+                <Text style={styles.helperButtonText}>See how the app works</Text>
+              </Pressable>
+
+              <Text style={styles.devHint}>
+                Mobile API target: {currentBaseUrl}
               </Text>
             </View>
           </ScrollView>
@@ -417,21 +409,35 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: "#FFF8EE",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    gap: 14,
+  },
+  loadingText: {
+    color: "#8E6A40",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   screen: {
     flex: 1,
     backgroundColor: "#FFF8EE",
   },
-  safeArea: {
+  flex: {
     flex: 1,
   },
-  flex: {
+  safeArea: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: "center",
     paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 32,
+    paddingVertical: 24,
   },
   blobTop: {
     position: "absolute",
@@ -445,16 +451,16 @@ const styles = StyleSheet.create({
   },
   blobBottom: {
     position: "absolute",
-    bottom: 60,
+    bottom: 80,
     left: -90,
-    width: 200,
-    height: 200,
+    width: 210,
+    height: 210,
     borderRadius: 999,
     backgroundColor: "#FFAA33",
-    opacity: 0.2,
+    opacity: 0.18,
   },
   topBar: {
-    marginBottom: 12,
+    marginBottom: 26,
   },
   logoText: {
     color: "#3D2000",
@@ -466,28 +472,12 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     alignItems: "center",
-    marginBottom: 18,
-  },
-  eyebrow: {
-    overflow: "hidden",
-    color: "#B85D00",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    backgroundColor: "rgba(255,153,0,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(255,153,0,0.3)",
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    marginBottom: 12,
+    marginBottom: 24,
   },
   heroTitle: {
     color: "#2A1500",
     fontSize: 30,
     fontWeight: "900",
-    textAlign: "center",
     marginBottom: 8,
   },
   heroSub: {
@@ -526,6 +516,11 @@ const styles = StyleSheet.create({
   },
   tabButtonActive: {
     backgroundColor: "#FF9900",
+    shadowColor: "#FF8C00",
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   tabButtonText: {
     color: "#9A6C30",
@@ -535,38 +530,36 @@ const styles = StyleSheet.create({
   tabButtonTextActive: {
     color: "#FFFFFF",
   },
-  errorBox: {
-    backgroundColor: "#FFF3E0",
-    borderColor: "#F6C87A",
+  messageBox: {
+    borderRadius: 14,
     borderWidth: 1,
-    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 14,
   },
-  errorText: {
+  messageBoxSuccess: {
+    backgroundColor: "#FFF5DF",
+    borderColor: "#F3C981",
+  },
+  messageBoxError: {
+    backgroundColor: "#FFF3E0",
+    borderColor: "#F6C87A",
+  },
+  messageText: {
     color: "#7A4800",
     fontSize: 13,
     fontWeight: "700",
     lineHeight: 20,
     textAlign: "center",
   },
-  row: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
-  },
-  half: {
-    flex: 1,
-  },
   formGroup: {
-    marginBottom: 12,
+    marginBottom: 14,
   },
   label: {
     color: "#9A6C30",
     fontSize: 11,
     fontWeight: "800",
-    letterSpacing: 0.7,
+    letterSpacing: 0.6,
     marginBottom: 6,
     textTransform: "uppercase",
   },
@@ -598,39 +591,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
   },
-  strengthWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 8,
+  forgotWrap: {
+    alignItems: "flex-end",
+    marginTop: -2,
+    marginBottom: 14,
   },
-  strengthBar: {
-    flex: 1,
-    height: 4,
-    borderRadius: 999,
+  forgotText: {
+    color: "#E07800",
+    fontSize: 12,
+    fontWeight: "700",
   },
-  strengthLabel: {
-    color: "#9A6C30",
-    fontSize: 11,
-    fontWeight: "800",
-    marginLeft: 6,
-  },
-  submitButton: {
+  loginButton: {
     minHeight: 54,
     borderRadius: 16,
     backgroundColor: "#F18700",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 6,
+    shadowColor: "#FF8C00",
+    shadowOpacity: 0.32,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
-  submitButtonPressed: {
+  loginButtonPressed: {
     opacity: 0.92,
     transform: [{ scale: 0.99 }],
   },
-  submitButtonDisabled: {
+  loginButtonDisabled: {
     opacity: 0.75,
   },
-  submitButtonText: {
+  loginButtonText: {
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "800",
@@ -686,5 +676,30 @@ const styles = StyleSheet.create({
   footerLink: {
     color: "#E07800",
     fontWeight: "800",
+  },
+  helperButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(225,120,0,0.18)",
+    backgroundColor: "rgba(255,245,225,0.95)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  helperButtonText: {
+    color: "#C16D00",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  devHint: {
+    marginTop: 18,
+    color: "#A28050",
+    fontSize: 11,
+    lineHeight: 18,
+    textAlign: "center",
   },
 });

@@ -157,7 +157,7 @@ export default function ChatScreen() {
           <Text style={styles.stateBody}>
             Log in again and your chat history will be available here.
           </Text>
-          <Pressable onPress={() => router.replace("/")} style={styles.primaryButton}>
+          <Pressable onPress={() => router.replace("/login")} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Back to login</Text>
           </Pressable>
         </View>

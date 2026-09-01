@@ -15,6 +15,7 @@ from .views_phase3 import (
     AdoptionOutcomeViewSet,
 )
 
+
 # Create router for viewsets
 router = DefaultRouter()
 router.register(r'traits/categories', TraitCategoryViewSet, basename='trait-category')

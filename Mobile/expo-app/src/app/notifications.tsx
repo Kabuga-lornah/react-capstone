@@ -174,7 +174,7 @@ export default function NotificationsScreen() {
           <Text style={styles.stateSubtext}>
             Log in again and your alerts, chats, and other protected screens will be available.
           </Text>
-          <Pressable onPress={() => router.replace("/")} style={styles.retryButton}>
+          <Pressable onPress={() => router.replace("/login")} style={styles.retryButton}>
             <Text style={styles.retryButtonText}>Back to login</Text>
           </Pressable>
         </View>

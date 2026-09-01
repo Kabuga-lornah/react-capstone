@@ -716,7 +716,7 @@ export function RehomerWorkspaceScreen({
         <View style={styles.stateBox}>
           <Text style={styles.stateTitle}>Your session expired on this device.</Text>
           <Text style={styles.stateBody}>Log in again to open your rehomer workspace.</Text>
-          <Pressable onPress={() => router.replace("/")} style={styles.primaryButton}>
+          <Pressable onPress={() => router.replace("/login")} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Back to login</Text>
           </Pressable>
         </View>
@@ -1390,7 +1390,7 @@ export function RehomerWorkspaceScreen({
                 <Pressable
                   onPress={() => {
                     logout();
-                    router.replace("/");
+                    router.replace("/login");
                   }}
                   style={styles.logoutButton}
                 >

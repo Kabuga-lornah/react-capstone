@@ -218,7 +218,7 @@ export default function ProfileScreen() {
         <Pressable
           onPress={() => {
             logout();
-            router.replace("/");
+            router.replace("/login");
           }}
           style={styles.logoutButton}
         >

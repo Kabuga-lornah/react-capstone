@@ -21,7 +21,7 @@ export default function AdminDashboardScreen() {
         <Pressable
           onPress={() => {
             logout();
-            router.replace("/");
+            router.replace("/login");
           }}
           style={styles.button}
         >

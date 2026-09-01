@@ -239,7 +239,7 @@ export default function PetPouchScreen() {
           <Text style={styles.stateSubtext}>
             Log in again and your saved pets will be waiting here.
           </Text>
-          <Pressable onPress={() => router.replace("/")} style={styles.primaryButton}>
+          <Pressable onPress={() => router.replace("/login")} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Back to login</Text>
           </Pressable>
         </View>
