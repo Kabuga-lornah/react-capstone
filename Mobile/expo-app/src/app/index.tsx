@@ -31,6 +31,7 @@ import {
   stopSpeaking,
   type DetectedInterest,
 } from "@/lib/aiCompanion";
+import { getDailyFact } from "@/lib/petFacts";
 import { normalizeCompanionPet, type CompanionPet } from "@/lib/petUtils";
 
 type Stage = "greeting" | "showing";
@@ -51,7 +52,22 @@ export default function AiCompanionScreen() {
   const [index, setIndex] = useState(0);
   const [isThinking, setIsThinking] = useState(false);
   const [likedMessage, setLikedMessage] = useState("");
+  const [dailyFact, setDailyFact] = useState("");
   const hasGreeted = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+
+    getDailyFact().then((fact) => {
+      if (active) {
+        setDailyFact(fact);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const currentPet = matches[index];
   const narration = currentPet && interest ? buildPetNarration(currentPet, interest) : "";
@@ -225,6 +241,14 @@ export default function AiCompanionScreen() {
           </View>
         ) : null}
 
+        {stage === "greeting" && dailyFact ? (
+          <Pressable onPress={() => void speakText(dailyFact)} style={styles.factCard}>
+            <Text style={styles.factKicker}>Fact of the day</Text>
+            <Text style={styles.factText}>{dailyFact}</Text>
+            <Text style={styles.factHint}>Tap to hear it</Text>
+          </Pressable>
+        ) : null}
+
         <View style={styles.shortcutRow}>
           <Pressable onPress={() => router.push("/pets")} style={styles.shortcutLink}>
             <Text style={styles.shortcutLinkText}>Browse pets nearby</Text>
@@ -314,6 +338,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     lineHeight: 18,
+  },
+  factCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.2)",
+    backgroundColor: "#FFF1D8",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
+  },
+  factKicker: {
+    color: "#B66900",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  factText: {
+    color: "#3D2500",
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "600",
+  },
+  factHint: {
+    color: "#B08A58",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 6,
   },
   shortcutRow: {
     flexDirection: "row",

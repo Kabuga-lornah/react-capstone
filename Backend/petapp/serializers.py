@@ -374,6 +374,7 @@ class PetSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         owner = request.user if request else None
         image_url = validated_data.pop('image_url', '')
+        additional_image_url = validated_data.pop('additional_image_url', '')
         validated_data['owner'] = owner
         pet = super().create(validated_data)
 
@@ -382,6 +383,13 @@ class PetSerializer(serializers.ModelSerializer):
                 pet=pet,
                 image_url=image_url,
                 is_main=True,
+            )
+
+        if additional_image_url:
+            PetImage.objects.create(
+                pet=pet,
+                image_url=additional_image_url,
+                is_main=False,
             )
 
         return pet

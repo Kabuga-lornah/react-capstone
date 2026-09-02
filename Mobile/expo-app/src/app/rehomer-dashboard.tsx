@@ -1238,6 +1238,15 @@ export function RehomerWorkspaceScreen({
                 <Text style={styles.sectionTitle}>My listings</Text>
                 <Text style={styles.sectionCount}>{pets.length}</Text>
               </View>
+              {isVerifiedRehomer ? (
+                <Pressable
+                  onPress={() => router.push("/rehomer-listings/new")}
+                  style={styles.addPetButton}
+                >
+                  <MaterialCommunityIcons color="#FFFFFF" name="plus" size={16} />
+                  <Text style={styles.addPetButtonText}>List a new pet</Text>
+                </Pressable>
+              ) : null}
               {!isVerifiedRehomer ? (
                 <View style={styles.helperCard}>
                   <Text style={styles.helperCardTitle}>Verification note</Text>
@@ -2351,6 +2360,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     textAlign: "center",
+  },
+  addPetButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minHeight: 46,
+    borderRadius: 16,
+    backgroundColor: "#F18700",
+    marginBottom: 14,
+  },
+  addPetButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
   },
   primaryButton: {
     minHeight: 48,

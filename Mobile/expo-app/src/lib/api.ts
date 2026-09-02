@@ -378,6 +378,20 @@ export async function listMyPets() {
   return apiRequest("/pets/my/");
 }
 
+export async function createPet(data: Record<string, unknown>) {
+  return apiRequest("/pets/create/", {
+    method: "POST",
+    data,
+  });
+}
+
+export async function uploadImage(data: { image_base64: string; mime_type: string }) {
+  return apiRequest("/uploads/image/", {
+    method: "POST",
+    data,
+  });
+}
+
 export async function deletePet(id: string | number) {
   return apiRequest(`/pets/${id}/`, {
     method: "DELETE",
