@@ -18,6 +18,7 @@ from .models import (
     QuizAnswer,
     QuizCategory,
     QuizQuestion,
+    RehomerReview,
     Shelter,
     TraitCategory,
 )
@@ -171,6 +172,20 @@ class AdoptionApplicationAdmin(admin.ModelAdmin):
 class PetWishlistAdmin(admin.ModelAdmin):
     list_display = ('user', 'pet', 'added_at')
     search_fields = ('user__username', 'user__email', 'pet__name')
+
+
+@admin.register(RehomerReview)
+class RehomerReviewAdmin(admin.ModelAdmin):
+    list_display = ('rehomer', 'reviewer', 'pet', 'rating', 'created_at')
+    list_filter = ('rating', 'created_at')
+    search_fields = (
+        'rehomer__username',
+        'rehomer__email',
+        'reviewer__username',
+        'reviewer__email',
+        'pet__name',
+        'comment',
+    )
 
 
 @admin.register(Notification)

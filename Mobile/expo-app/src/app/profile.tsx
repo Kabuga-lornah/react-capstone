@@ -27,7 +27,6 @@ export default function ProfileScreen() {
     last_name: userData?.last_name || "",
     email: userData?.email || "",
     phone_number: userData?.phone_number || "",
-    community_alias: userData?.community_alias || "",
     profile_photo_url: userData?.profile_photo_url || "",
     preferred_language: userData?.preferred_language || "en",
   });
@@ -40,7 +39,6 @@ export default function ProfileScreen() {
       last_name: userData?.last_name || "",
       email: userData?.email || "",
       phone_number: userData?.phone_number || "",
-      community_alias: userData?.community_alias || "",
       profile_photo_url: userData?.profile_photo_url || "",
       preferred_language: userData?.preferred_language || "en",
     });
@@ -70,7 +68,6 @@ export default function ProfileScreen() {
         last_name: formData.last_name.trim(),
         email: formData.email.trim(),
         phone_number: formData.phone_number.trim(),
-        community_alias: formData.community_alias.trim(),
         profile_photo_url: formData.profile_photo_url.trim(),
         preferred_language: formData.preferred_language,
       });
@@ -90,7 +87,7 @@ export default function ProfileScreen() {
   return (
     <MobileAppShell
       title="Profile"
-      subtitle="Update your contact details, community username, and profile photo link from one place."
+      subtitle="Update your contact details, Soni's language, and profile photo link from one place."
       scroll
     >
       <View style={styles.hero}>
@@ -98,7 +95,7 @@ export default function ProfileScreen() {
           <Text style={styles.eyebrow}>User Profile</Text>
           <Text style={styles.title}>{displayName}</Text>
           <Text style={styles.subtitle}>
-            Keep your details current so chats, community, and adoption updates feel personal.
+            Keep your details current so chats and adoption updates feel personal.
           </Text>
         </View>
 
@@ -187,18 +184,6 @@ export default function ProfileScreen() {
             placeholderTextColor="#B08A58"
             style={styles.input}
             value={formData.phone_number}
-          />
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <Text style={styles.fieldLabel}>Community username</Text>
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={handleChange("community_alias")}
-            placeholder="Choose the name people see in Community"
-            placeholderTextColor="#B08A58"
-            style={styles.input}
-            value={formData.community_alias}
           />
         </View>
 

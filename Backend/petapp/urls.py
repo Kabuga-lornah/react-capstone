@@ -38,6 +38,8 @@ from .views import (
     WishlistDeleteView,
     WishlistListCreateView,
 )
+from .views_reviews import RehomerReviewCreateView, RehomerReviewListView
+from .views_soni import SoniChatView
 from .views_tts import SpeakView
 from .views_uploads import ImageUploadView
 from .views_visualization import PetRoomVisualizationView
@@ -68,6 +70,7 @@ urlpatterns = [
     path('vets/nearby/', NearbyVetClinicsView.as_view(), name='vets-nearby'),
     path('uploads/image/', ImageUploadView.as_view(), name='image-upload'),
     path('voice/speak/', SpeakView.as_view(), name='voice-speak'),
+    path('soni/chat/', SoniChatView.as_view(), name='soni-chat'),
 
     path('applications/create/', AdoptionApplicationCreateView.as_view(), name='application-create'),
     path('applications/my/', MyApplicationsListView.as_view(), name='application-my-list'),
@@ -77,6 +80,9 @@ urlpatterns = [
     path('applications/<int:pk>/approve/', ApplicationApproveView.as_view(), name='application-approve'),
     path('applications/<int:pk>/reject/', ApplicationRejectView.as_view(), name='application-reject'),
     path('applications/<int:pk>/withdraw/', ApplicationWithdrawView.as_view(), name='application-withdraw'),
+
+    path('reviews/', RehomerReviewListView.as_view(), name='rehomer-review-list'),
+    path('reviews/create/', RehomerReviewCreateView.as_view(), name='rehomer-review-create'),
 
     path('wishlist/', WishlistListCreateView.as_view(), name='wishlist-list-create'),
     path('wishlist/<int:pk>/', WishlistDeleteView.as_view(), name='wishlist-delete'),

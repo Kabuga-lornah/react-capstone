@@ -138,6 +138,7 @@ const SPEECH_LOCALE_BY_LANGUAGE: Record<LanguageCode, string> = {
   fr: "fr-FR",
   pt: "pt-PT",
   ru: "ru-RU",
+  zh: "zh-CN",
 };
 
 let audioPlayer: import("expo-audio").AudioPlayer | null = null;

@@ -89,6 +89,12 @@ export function PetSwipeDeck({
         <Animated.View style={[styles.card, cardStyle]}>
           <Image contentFit="cover" source={{ uri: pet.imageUrl }} style={styles.image} />
 
+          <View style={[styles.vaccinationBadge, pet.isVaccinated ? styles.vaccinationBadgeYes : styles.vaccinationBadgeNo]}>
+            <Text style={styles.vaccinationBadgeText}>
+              {pet.isVaccinated ? "Vaccinated" : "Not vaccinated"}
+            </Text>
+          </View>
+
           <Animated.View style={[styles.badge, styles.likeBadge, likeBadgeStyle]}>
             <Text style={styles.likeBadgeText}>LIKE</Text>
           </Animated.View>
@@ -184,6 +190,27 @@ const styles = StyleSheet.create({
     color: "#FFD9A0",
     fontSize: 12,
     marginTop: 4,
+  },
+  vaccinationBadge: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  vaccinationBadgeYes: {
+    backgroundColor: "rgba(22,101,52,0.92)",
+  },
+  vaccinationBadgeNo: {
+    backgroundColor: "rgba(120,53,15,0.85)",
+  },
+  vaccinationBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
   badge: {
     position: "absolute",

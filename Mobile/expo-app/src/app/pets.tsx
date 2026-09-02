@@ -165,6 +165,16 @@ export default function PetsScreen() {
                   {item.status?.toLowerCase() === "available" ? "Available" : toTitleCase(item.status)}
                 </Text>
               </View>
+              <View
+                style={[
+                  styles.vaccinationBadge,
+                  item.isVaccinated ? styles.vaccinationBadgeYes : styles.vaccinationBadgeNo,
+                ]}
+              >
+                <Text style={styles.vaccinationBadgeText}>
+                  {item.isVaccinated ? "Vaccinated" : "Not vaccinated"}
+                </Text>
+              </View>
             </View>
 
             <View style={styles.cardBody}>
@@ -283,6 +293,27 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  vaccinationBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  vaccinationBadgeYes: {
+    backgroundColor: "rgba(22,101,52,0.92)",
+  },
+  vaccinationBadgeNo: {
+    backgroundColor: "rgba(120,53,15,0.85)",
+  },
+  vaccinationBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
   cardBody: {
     paddingTop: 10,

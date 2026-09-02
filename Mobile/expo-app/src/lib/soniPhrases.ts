@@ -1,4 +1,4 @@
-export type LanguageCode = "en" | "sw" | "fr" | "pt" | "ru";
+export type LanguageCode = "en" | "sw" | "fr" | "pt" | "ru" | "zh";
 
 export const SUPPORTED_LANGUAGES: { code: LanguageCode; label: string }[] = [
   { code: "en", label: "English" },
@@ -6,6 +6,7 @@ export const SUPPORTED_LANGUAGES: { code: LanguageCode; label: string }[] = [
   { code: "fr", label: "Français" },
   { code: "pt", label: "Português" },
   { code: "ru", label: "Русский" },
+  { code: "zh", label: "中文" },
 ];
 
 export const normalizeLanguage = (value?: string | null): LanguageCode => {
@@ -103,5 +104,20 @@ export const PHRASES: Record<LanguageCode, PhraseSet> = {
     boy: "мальчик",
     girl: "девочка",
     and: "и",
+  },
+  zh: {
+    greeting: (name) => (name ? `你好，${name}，我是索尼。` : "你好，我是索尼。"),
+    askWhatToAdopt: "你今天想领养什么？狗、猫、兔子、鸟、蛇，还是别的？",
+    clarify: "狗、猫、兔子、鸟、蛇、乌龟、鸡，或者其他伙伴。你想要哪一种？",
+    matchIntroFound: (label, count) =>
+      `好的，${label}。这里${count === 1 ? "有一个匹配结果" : "有几个匹配结果"}，我们一个一个来看。`,
+    matchIntroEmpty: (label) => `目前没有${label}。要不要告诉我别的宠物类型？`,
+    wrapUp: (label) => `${label}就是这些了。你还想领养什么？`,
+    wrapUpGeneric: "暂时就是这些了。你还想领养什么？",
+    isA: "是",
+    yearsOfAge: "岁",
+    boy: "男生",
+    girl: "女生",
+    and: "和",
   },
 };
