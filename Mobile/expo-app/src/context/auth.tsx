@@ -23,6 +23,7 @@ type UserProfile = {
   is_online?: boolean;
   last_seen?: string;
   role: string;
+  preferred_language?: string;
 };
 
 type AuthContextValue = {

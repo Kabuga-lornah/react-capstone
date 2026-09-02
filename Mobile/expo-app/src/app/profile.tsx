@@ -10,8 +10,10 @@ import {
 import { Image } from "expo-image";
 
 import { MobileAppShell } from "@/components/mobile-app-shell";
+import { PillGroup } from "@/components/form-controls";
 import { useAuth } from "@/context/auth";
 import { updateCurrentUser } from "@/lib/api";
+import { SUPPORTED_LANGUAGES } from "@/lib/soniPhrases";
 
 type MessageState = {
   type: "" | "success" | "error";
@@ -27,6 +29,7 @@ export default function ProfileScreen() {
     phone_number: userData?.phone_number || "",
     community_alias: userData?.community_alias || "",
     profile_photo_url: userData?.profile_photo_url || "",
+    preferred_language: userData?.preferred_language || "en",
   });
   const [message, setMessage] = useState<MessageState>({ type: "", text: "" });
   const [saving, setSaving] = useState(false);
@@ -39,6 +42,7 @@ export default function ProfileScreen() {
       phone_number: userData?.phone_number || "",
       community_alias: userData?.community_alias || "",
       profile_photo_url: userData?.profile_photo_url || "",
+      preferred_language: userData?.preferred_language || "en",
     });
   }, [userData]);
 
@@ -68,6 +72,7 @@ export default function ProfileScreen() {
         phone_number: formData.phone_number.trim(),
         community_alias: formData.community_alias.trim(),
         profile_photo_url: formData.profile_photo_url.trim(),
+        preferred_language: formData.preferred_language,
       });
 
       setAuthenticatedUser(updatedProfile);
@@ -194,6 +199,17 @@ export default function ProfileScreen() {
             placeholderTextColor="#B08A58"
             style={styles.input}
             value={formData.community_alias}
+          />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Soni's language</Text>
+          <PillGroup
+            onChange={(value) =>
+              setFormData((current) => ({ ...current, preferred_language: value }))
+            }
+            options={SUPPORTED_LANGUAGES.map((item) => ({ value: item.code, label: item.label }))}
+            value={formData.preferred_language}
           />
         </View>
       </View>

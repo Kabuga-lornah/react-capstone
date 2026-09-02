@@ -44,6 +44,7 @@ class UserSerializer(serializers.ModelSerializer):
             'rehomer_verification_submitted_at',
             'rehomer_verification_reviewed_at',
             'rehomer_verification_notes',
+            'preferred_language',
             'last_seen',
             'is_online',
             'activity_status',
@@ -122,6 +123,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             'profile_photo_url',
             'id_front_url',
             'id_back_url',
+            'preferred_language',
         ]
 
     def validate_community_alias(self, value):
@@ -185,10 +187,22 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name', 'role', 'phone_number', 'bio']
+        fields = [
+            'id',
+            'username',
+            'email',
+            'password',
+            'first_name',
+            'last_name',
+            'role',
+            'phone_number',
+            'bio',
+            'preferred_language',
+        ]
         extra_kwargs = {
             'role': {'required': True},
             'username': {'required': False, 'allow_blank': True},
+            'preferred_language': {'required': False},
         }
 
     def validate(self, attrs):

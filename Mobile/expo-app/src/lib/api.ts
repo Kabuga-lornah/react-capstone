@@ -348,6 +348,7 @@ export async function updateCurrentUser(data: {
   phone_number?: string;
   community_alias?: string;
   profile_photo_url?: string;
+  preferred_language?: string;
 }) {
   return apiRequest("/auth/me/", {
     method: "PATCH",
@@ -363,6 +364,7 @@ export async function registerUser(data: {
   last_name: string;
   phone_number: string;
   role: string;
+  preferred_language?: string;
 }) {
   return apiRequest("/auth/register/", {
     method: "POST",
@@ -404,6 +406,13 @@ export async function getPetDetail(id: string | number) {
 
 export async function getNearbyVetClinics(lat: number, lng: number) {
   return apiRequest("/vets/nearby/", { params: { lat, lng } });
+}
+
+export async function synthesizeSpeech(text: string, language?: string) {
+  return apiRequest("/voice/speak/", {
+    method: "POST",
+    data: { text, language },
+  });
 }
 
 export async function visualizePetInRoom(

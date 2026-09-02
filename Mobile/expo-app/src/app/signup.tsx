@@ -13,10 +13,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { PillGroup } from "@/components/form-controls";
 import { useAuth } from "@/context/auth";
 import { registerUser } from "@/lib/api";
 import { signInWithGoogle } from "@/lib/googleAuth";
 import { buildPostAuthRedirect } from "@/lib/onboarding";
+import { SUPPORTED_LANGUAGES } from "@/lib/soniPhrases";
 
 type SignupType = "user" | "rehomer";
 
@@ -74,6 +76,7 @@ export default function SignupScreen() {
     email: "",
     password: "",
     confirmPassword: "",
+    preferredLanguage: "en",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -135,6 +138,7 @@ export default function SignupScreen() {
         last_name: formData.lastName.trim(),
         phone_number: formData.phoneNumber.trim(),
         role: mapRouteTypeToRole(type),
+        preferred_language: formData.preferredLanguage,
       });
 
       router.replace({
@@ -270,6 +274,15 @@ export default function SignupScreen() {
                   placeholderTextColor="#B08A58"
                   style={styles.input}
                   value={formData.phoneNumber}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Soni's language</Text>
+                <PillGroup
+                  onChange={(value) => updateField("preferredLanguage", value)}
+                  options={SUPPORTED_LANGUAGES.map((item) => ({ value: item.code, label: item.label }))}
+                  value={formData.preferredLanguage}
                 />
               </View>
 
