@@ -57,15 +57,21 @@ export default function AiCompanionScreen() {
   const narration = currentPet && interest ? buildPetNarration(currentPet, interest) : "";
 
   useEffect(() => {
-    if (isReady && userData?.role === "rehomer") {
+    if (!isReady) {
+      return;
+    }
+
+    if (!userData) {
+      router.replace("/login");
+      return;
+    }
+
+    if (userData.role === "rehomer") {
       router.replace("/rehomer-dashboard");
       return;
     }
 
-    if (
-      isReady &&
-      (userData?.role === "shelter_admin" || userData?.role === "platform_admin")
-    ) {
+    if (userData.role === "shelter_admin" || userData.role === "platform_admin") {
       router.replace("/admin-dashboard");
     }
   }, [isReady, userData]);
@@ -183,6 +189,14 @@ export default function AiCompanionScreen() {
     }
   };
 
+  if (!isReady || !userData) {
+    return (
+      <View style={styles.bootScreen}>
+        <ActivityIndicator color="#F18700" size="large" />
+      </View>
+    );
+  }
+
   return (
     <MobileAppShell subtitle={`Talk to ${AI_COMPANION_NAME} to find a match`} title={AI_COMPANION_NAME}>
       <KeyboardAvoidingView
@@ -252,6 +266,12 @@ export default function AiCompanionScreen() {
 }
 
 const styles = StyleSheet.create({
+  bootScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF8EE",
+  },
   flex: {
     flex: 1,
   },
