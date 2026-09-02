@@ -184,6 +184,11 @@ GEMINI_IMAGE_MODEL = os.getenv('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image').s
 # Google Places API. Leave unset to disable the vets feature.
 GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', '').strip()
 
+# Used by petapp.tts_service for Soni's voice via Google Cloud Text-to-Speech.
+# Falls back to GOOGLE_PLACES_API_KEY if unset, since one Google Cloud API key
+# can be enabled for multiple APIs. Leave both unset to disable cloud voice.
+GOOGLE_CLOUD_TTS_API_KEY = os.getenv('GOOGLE_CLOUD_TTS_API_KEY', '').strip()
+
 GOOGLE_OAUTH_CLIENT_IDS = tuple(
     client_id
     for client_id in {

@@ -38,6 +38,8 @@ from .views import (
     WishlistDeleteView,
     WishlistListCreateView,
 )
+from .views_tts import SpeakView
+from .views_uploads import ImageUploadView
 from .views_visualization import PetRoomVisualizationView
 from .views_vets import NearbyVetClinicsView
 
@@ -64,6 +66,8 @@ urlpatterns = [
     path('pets/<int:pk>/', PetDetailView.as_view(), name='pet-detail'),
     path('pets/<int:pk>/visualize-room/', PetRoomVisualizationView.as_view(), name='pet-visualize-room'),
     path('vets/nearby/', NearbyVetClinicsView.as_view(), name='vets-nearby'),
+    path('uploads/image/', ImageUploadView.as_view(), name='image-upload'),
+    path('voice/speak/', SpeakView.as_view(), name='voice-speak'),
 
     path('applications/create/', AdoptionApplicationCreateView.as_view(), name='application-create'),
     path('applications/my/', MyApplicationsListView.as_view(), name='application-my-list'),

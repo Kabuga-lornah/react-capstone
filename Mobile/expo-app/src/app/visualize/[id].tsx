@@ -19,11 +19,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AiOrb } from "@/components/ai-orb";
 import { ApiError, getAccessToken, getPetDetail, visualizePetInRoom } from "@/lib/api";
 import { speakText } from "@/lib/aiCompanion";
+import { useAuth } from "@/context/auth";
+import { normalizeLanguage } from "@/lib/soniPhrases";
 
 type Stage = "intro" | "generating" | "result" | "error";
 
 export default function VisualizeInRoomScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
+  const { userData } = useAuth();
+  const language = normalizeLanguage(userData?.preferred_language);
   const isLoggedIn = Boolean(getAccessToken());
 
   const [petName, setPetName] = useState("this pet");
@@ -60,7 +64,7 @@ export default function VisualizeInRoomScreen() {
     setStage("generating");
     const thinking = `Let me picture ${petName} in your space...`;
     setStatusText(thinking);
-    void speakText(thinking);
+    void speakText(thinking, language);
 
     try {
       const compressed = await ImageManipulator.manipulateAsync(
@@ -82,7 +86,7 @@ export default function VisualizeInRoomScreen() {
       setStage("result");
       const done = `Here's how ${petName} might look in your space.`;
       setStatusText(done);
-      void speakText(done);
+      void speakText(done, language);
     } catch (error) {
       setStage("error");
 

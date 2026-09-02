@@ -22,16 +22,20 @@ import {
 } from "@/lib/api";
 import {
   AI_COMPANION_NAME,
+  buildClarification,
   buildMatchIntro,
   buildPetNarration,
   buildWelcomeMessage,
+  buildWrapUp,
   detectPetInterest,
   petMatchesInterest,
   speakText,
   stopSpeaking,
   type DetectedInterest,
 } from "@/lib/aiCompanion";
+import { getDailyFact } from "@/lib/petFacts";
 import { normalizeCompanionPet, type CompanionPet } from "@/lib/petUtils";
+import { normalizeLanguage } from "@/lib/soniPhrases";
 
 type Stage = "greeting" | "showing";
 
@@ -41,7 +45,8 @@ export default function AiCompanionScreen() {
     userData?.first_name ||
     userData?.username ||
     "friend";
-  const welcome = useMemo(() => buildWelcomeMessage(firstName), [firstName]);
+  const language = useMemo(() => normalizeLanguage(userData?.preferred_language), [userData]);
+  const welcome = useMemo(() => buildWelcomeMessage(firstName, language), [firstName, language]);
 
   const [stage, setStage] = useState<Stage>("greeting");
   const [input, setInput] = useState("");
@@ -51,10 +56,25 @@ export default function AiCompanionScreen() {
   const [index, setIndex] = useState(0);
   const [isThinking, setIsThinking] = useState(false);
   const [likedMessage, setLikedMessage] = useState("");
+  const [dailyFact, setDailyFact] = useState("");
   const hasGreeted = useRef(false);
 
+  useEffect(() => {
+    let active = true;
+
+    getDailyFact().then((fact) => {
+      if (active) {
+        setDailyFact(fact);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const currentPet = matches[index];
-  const narration = currentPet && interest ? buildPetNarration(currentPet, interest) : "";
+  const narration = currentPet && interest ? buildPetNarration(currentPet, interest, language) : "";
 
   useEffect(() => {
     if (!isReady) {
@@ -82,16 +102,16 @@ export default function AiCompanionScreen() {
     }
 
     hasGreeted.current = true;
-    void speakText(welcome);
-  }, [welcome]);
+    void speakText(welcome, language);
+  }, [welcome, language]);
 
   useEffect(() => {
     if (stage !== "showing" || !narration) {
       return;
     }
 
-    void speakText(narration);
-  }, [narration, stage, currentPet?.id]);
+    void speakText(narration, language);
+  }, [narration, stage, currentPet?.id, language]);
 
   useEffect(() => {
     return () => {
@@ -104,11 +124,9 @@ export default function AiCompanionScreen() {
       setStage("greeting");
       setMatches([]);
       setIndex(0);
-      const wrapUp = interest
-        ? `That's everyone for ${interest.label} right now. What else would you like to adopt?`
-        : "That's everyone for now. What else would you like to adopt?";
+      const wrapUp = buildWrapUp(interest?.label ?? null, language);
       setStatus(wrapUp);
-      void speakText(wrapUp);
+      void speakText(wrapUp, language);
       return;
     }
 
@@ -150,10 +168,9 @@ export default function AiCompanionScreen() {
     setLikedMessage("");
 
     if (!detected) {
-      const clarification =
-        "Dog, cat, rabbit, bird, snake, tortoise, chicken, or another companion. Which one?";
+      const clarification = buildClarification(language);
       setStatus(clarification);
-      void speakText(clarification);
+      void speakText(clarification, language);
       return;
     }
 
@@ -171,19 +188,19 @@ export default function AiCompanionScreen() {
       setMatches(available);
       setIndex(0);
 
-      const intro = buildMatchIntro(detected, available.length);
+      const intro = buildMatchIntro(detected, available.length, language);
       setStatus(intro);
 
       if (available.length > 0) {
         setStage("showing");
       } else {
-        void speakText(intro);
+        void speakText(intro, language);
       }
     } catch {
       const errorText =
         "I couldn't reach the pets list just now. Check that the backend is running, then tell me again what you'd like to adopt.";
       setStatus(errorText);
-      void speakText(errorText);
+      void speakText(errorText, language);
     } finally {
       setIsThinking(false);
     }
@@ -223,6 +240,14 @@ export default function AiCompanionScreen() {
               onLike={handleLike}
             />
           </View>
+        ) : null}
+
+        {stage === "greeting" && dailyFact ? (
+          <Pressable onPress={() => void speakText(dailyFact)} style={styles.factCard}>
+            <Text style={styles.factKicker}>Fact of the day</Text>
+            <Text style={styles.factText}>{dailyFact}</Text>
+            <Text style={styles.factHint}>Tap to hear it</Text>
+          </Pressable>
         ) : null}
 
         <View style={styles.shortcutRow}>
@@ -314,6 +339,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     lineHeight: 18,
+  },
+  factCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.2)",
+    backgroundColor: "#FFF1D8",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
+  },
+  factKicker: {
+    color: "#B66900",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  factText: {
+    color: "#3D2500",
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "600",
+  },
+  factHint: {
+    color: "#B08A58",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 6,
   },
   shortcutRow: {
     flexDirection: "row",
