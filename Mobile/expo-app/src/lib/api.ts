@@ -388,6 +388,16 @@ export async function getPetDetail(id: string | number) {
   return apiRequest(`/pets/${id}/`);
 }
 
+export async function visualizePetInRoom(
+  petId: string | number,
+  data: { room_image_base64: string; mime_type: string },
+) {
+  return apiRequest(`/pets/${petId}/visualize-room/`, {
+    method: "POST",
+    data,
+  });
+}
+
 export async function listWishlist() {
   return apiRequest("/wishlist/");
 }

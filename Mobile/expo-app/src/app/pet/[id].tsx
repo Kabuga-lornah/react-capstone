@@ -493,6 +493,31 @@ export default function PetDetailScreen() {
         ) : null}
 
         <View style={styles.sectionCard}>
+          <Text style={styles.sectionEyebrow}>Visualize</Text>
+          <Text style={styles.sectionTitle}>See {pet.name} in your space</Text>
+          <Text style={styles.bodyCopy}>
+            Show a photo of your room and our AI will picture {pet.name} in it, so you can
+            imagine what life together might look like.
+          </Text>
+          <Pressable
+            onPress={() => {
+              if (!isLoggedIn) {
+                setMessage({ type: "error", text: "Please log in to try the room visualizer." });
+                return;
+              }
+
+              router.push({
+                pathname: "/visualize/[id]",
+                params: { id: pet.id },
+              });
+            }}
+            style={[styles.secondaryButton, { marginTop: 12 }]}
+          >
+            <Text style={styles.secondaryButtonText}>Try the room visualizer</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionEyebrow}>Personality</Text>
           <Text style={styles.sectionTitle}>What {pet.name} is like</Text>
           <View style={styles.traitsWrap}>
