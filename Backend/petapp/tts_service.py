@@ -27,6 +27,7 @@ VOICE_BY_LANGUAGE = {
     "pt": {"languageCode": "pt-PT", "name": "pt-PT-Wavenet-A"},
     "ru": {"languageCode": "ru-RU", "name": "ru-RU-Wavenet-E"},
     "de": {"languageCode": "de-DE", "name": "de-DE-Neural2-F"},
+    "zh": {"languageCode": "cmn-CN", "name": "cmn-CN-Wavenet-A"},
 }
 
 

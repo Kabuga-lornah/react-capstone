@@ -15,6 +15,7 @@ from .models import (
     Pet,
     PetImage,
     PetWishlist,
+    RehomerReview,
     Shelter,
 )
 
@@ -442,6 +443,7 @@ class AdoptionApplicationSerializer(serializers.ModelSerializer):
     pet_id = serializers.PrimaryKeyRelatedField(
         queryset=Pet.objects.all(), source='pet', write_only=True,
     )
+    has_review = serializers.SerializerMethodField()
 
     class Meta:
         model = AdoptionApplication
@@ -463,6 +465,7 @@ class AdoptionApplicationSerializer(serializers.ModelSerializer):
             'visit_proposed_by',
             'visit_confirmed_at',
             'status',
+            'has_review',
             'created_at',
             'updated_at',
         ]
@@ -474,9 +477,13 @@ class AdoptionApplicationSerializer(serializers.ModelSerializer):
             'visit_proposed_by',
             'visit_confirmed_at',
             'status',
+            'has_review',
             'created_at',
             'updated_at',
         ]
+
+    def get_has_review(self, obj):
+        return hasattr(obj, 'review')
 
     def create(self, validated_data):
         request = self.context.get('request')
@@ -508,6 +515,50 @@ class VisitPlanUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'meeting_preference': 'Choose a meeting style.'})
 
         return attrs
+
+
+class RehomerReviewSerializer(serializers.ModelSerializer):
+    reviewer = PublicUserSerializer(read_only=True)
+    rehomer = PublicUserSerializer(read_only=True)
+    pet_name = serializers.CharField(source='pet.name', read_only=True)
+    application_id = serializers.PrimaryKeyRelatedField(
+        queryset=AdoptionApplication.objects.all(), source='application', write_only=True,
+    )
+
+    class Meta:
+        model = RehomerReview
+        fields = [
+            'id',
+            'application_id',
+            'pet',
+            'pet_name',
+            'reviewer',
+            'rehomer',
+            'rating',
+            'comment',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'pet', 'reviewer', 'rehomer', 'created_at']
+
+    def validate_application_id(self, application):
+        request = self.context.get('request')
+
+        if application.applicant != request.user:
+            raise serializers.ValidationError('You can only review your own adoption.')
+        if application.status != AdoptionApplication.APPROVED:
+            raise serializers.ValidationError('You can only review an approved adoption.')
+        if RehomerReview.objects.filter(application=application).exists():
+            raise serializers.ValidationError('You already left a review for this adoption.')
+
+        return application
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        application = validated_data['application']
+        validated_data['reviewer'] = request.user
+        validated_data['pet'] = application.pet
+        validated_data['rehomer'] = application.pet.owner
+        return super().create(validated_data)
 
 
 class PetWishlistSerializer(serializers.ModelSerializer):

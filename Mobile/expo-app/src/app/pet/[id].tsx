@@ -6,22 +6,61 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { PillGroup } from "@/components/form-controls";
 import { useAuth } from "@/context/auth";
 import {
+  acceptVisitPlan,
   addToWishlist,
   createAdoptionApplication,
+  createRehomerReview,
   getAccessToken,
   getPetDetail,
   listMyApplications,
+  listRehomerReviews,
   listWishlist,
+  proposeVisitPlan,
   startConversation,
   withdrawApplication,
 } from "@/lib/api";
+
+const MEETING_OPTIONS = [
+  { value: "rehomer_home", label: "Visit their place" },
+  { value: "adopter_home", label: "They visit me" },
+  { value: "neutral_place", label: "Meet somewhere neutral" },
+] as const;
+
+const getMeetingLabel = (value?: string) =>
+  MEETING_OPTIONS.find((option) => option.value === value)?.label || "Not chosen yet";
+
+const RATING_OPTIONS = [
+  { value: "5", label: "5 - Amazing" },
+  { value: "4", label: "4 - Great" },
+  { value: "3", label: "3 - Good" },
+  { value: "2", label: "2 - Okay" },
+  { value: "1", label: "1 - Poor" },
+] as const;
+
+type RehomerReviewRecord = {
+  id: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  reviewerName: string;
+};
+
+const normalizeReview = (review: any): RehomerReviewRecord => ({
+  id: String(review.id),
+  rating: Number(review.rating) || 0,
+  comment: review.comment || "",
+  createdAt: review.created_at || "",
+  reviewerName: review.reviewer?.display_name || review.reviewer?.username || "An adopter",
+});
 
 type PetDetailRecord = {
   id: string;
@@ -184,6 +223,21 @@ export default function PetDetailScreen() {
   const [isSaved, setIsSaved] = useState(false);
   const [isInterested, setIsInterested] = useState(false);
   const [activeApplicationId, setActiveApplicationId] = useState<string>("");
+  const [applicationStatus, setApplicationStatus] = useState("");
+  const [visitStatus, setVisitStatus] = useState("not_started");
+  const [visitProposedBy, setVisitProposedBy] = useState("");
+  const [visitDate, setVisitDate] = useState("");
+  const [meetingPreference, setMeetingPreference] = useState("");
+  const [meetingNotes, setMeetingNotes] = useState("");
+  const [isEditingVisit, setIsEditingVisit] = useState(false);
+  const [visitDraftDate, setVisitDraftDate] = useState("");
+  const [visitDraftPreference, setVisitDraftPreference] = useState("");
+  const [visitDraftNotes, setVisitDraftNotes] = useState("");
+  const [hasReview, setHasReview] = useState(false);
+  const [isWritingReview, setIsWritingReview] = useState(false);
+  const [reviewDraftRating, setReviewDraftRating] = useState("5");
+  const [reviewDraftComment, setReviewDraftComment] = useState("");
+  const [reviews, setReviews] = useState<RehomerReviewRecord[]>([]);
   const [isBusy, setIsBusy] = useState(false);
 
   const isLoggedIn = Boolean(getAccessToken());
@@ -208,6 +262,19 @@ export default function PetDetailScreen() {
       setPet(normalized);
       setActiveImageIndex(0);
 
+      if (normalized.owner?.id) {
+        listRehomerReviews({ rehomer_id: normalized.owner.id })
+          .then((reviewsResponse) => {
+            const reviewItems = Array.isArray(reviewsResponse)
+              ? reviewsResponse
+              : reviewsResponse?.results || [];
+            setReviews(reviewItems.map(normalizeReview));
+          })
+          .catch(() => setReviews([]));
+      } else {
+        setReviews([]);
+      }
+
       if (isLoggedIn) {
         const [wishlistResponse, applicationsResponse] = await Promise.all([
           listWishlist().catch(() => []),
@@ -229,10 +296,24 @@ export default function PetDetailScreen() {
         );
         setIsInterested(Boolean(matchingApplication));
         setActiveApplicationId(matchingApplication ? String(matchingApplication.id) : "");
+        setApplicationStatus(matchingApplication?.status || "");
+        setVisitStatus(matchingApplication?.visit_status || "not_started");
+        setVisitProposedBy(matchingApplication?.visit_proposed_by || "");
+        setVisitDate(matchingApplication?.preferred_visit_date || "");
+        setMeetingPreference(matchingApplication?.meeting_preference || "");
+        setMeetingNotes(matchingApplication?.meeting_location_notes || "");
+        setHasReview(Boolean(matchingApplication?.has_review));
       } else {
         setIsSaved(false);
         setIsInterested(false);
         setActiveApplicationId("");
+        setApplicationStatus("");
+        setVisitStatus("not_started");
+        setVisitProposedBy("");
+        setVisitDate("");
+        setMeetingPreference("");
+        setMeetingNotes("");
+        setHasReview(false);
       }
     } catch (error: any) {
       setLoadError(error?.message || "Failed to fetch pet details.");
@@ -346,6 +427,97 @@ export default function PetDetailScreen() {
         type: "error",
         text: error?.message || "Failed to cancel your interest.",
       });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const openVisitEditor = () => {
+    setVisitDraftDate(visitDate);
+    setVisitDraftPreference(meetingPreference);
+    setVisitDraftNotes(meetingNotes);
+    setIsEditingVisit(true);
+  };
+
+  const handleSubmitVisit = async () => {
+    if (!activeApplicationId) {
+      return;
+    }
+
+    if (!visitDraftDate.trim() || !visitDraftPreference) {
+      setMessage({ type: "error", text: "Add a proposed date and meeting style first." });
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      setMessage({ type: "", text: "" });
+      const updated = await proposeVisitPlan(activeApplicationId, {
+        preferred_visit_date: visitDraftDate.trim(),
+        meeting_preference: visitDraftPreference,
+        meeting_location_notes: visitDraftNotes.trim(),
+      });
+      setVisitStatus(updated.visit_status || "proposed");
+      setVisitProposedBy(updated.visit_proposed_by || "adopter");
+      setVisitDate(updated.preferred_visit_date || visitDraftDate.trim());
+      setMeetingPreference(updated.meeting_preference || visitDraftPreference);
+      setMeetingNotes(updated.meeting_location_notes || visitDraftNotes.trim());
+      setIsEditingVisit(false);
+      setMessage({ type: "success", text: "Your visit plan was sent to the rehomer." });
+    } catch (error: any) {
+      setMessage({ type: "error", text: error?.message || "Could not send that visit plan." });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleAcceptVisit = async () => {
+    if (!activeApplicationId) {
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      setMessage({ type: "", text: "" });
+      const updated = await acceptVisitPlan(activeApplicationId);
+      setVisitStatus(updated.visit_status || "agreed");
+      setMessage({ type: "success", text: "Visit agreed! See you then." });
+    } catch (error: any) {
+      setMessage({ type: "error", text: error?.message || "Could not accept this visit plan." });
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleSubmitReview = async () => {
+    if (!activeApplicationId) {
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      setMessage({ type: "", text: "" });
+      await createRehomerReview({
+        application_id: activeApplicationId,
+        rating: Number(reviewDraftRating),
+        comment: reviewDraftComment.trim(),
+      });
+      setHasReview(true);
+      setIsWritingReview(false);
+      setReviewDraftComment("");
+      setMessage({ type: "success", text: "Thanks for sharing your experience!" });
+      if (pet?.owner?.id) {
+        listRehomerReviews({ rehomer_id: pet.owner.id })
+          .then((reviewsResponse) => {
+            const reviewItems = Array.isArray(reviewsResponse)
+              ? reviewsResponse
+              : reviewsResponse?.results || [];
+            setReviews(reviewItems.map(normalizeReview));
+          })
+          .catch(() => {});
+      }
+    } catch (error: any) {
+      setMessage({ type: "error", text: error?.message || "Could not submit your review." });
     } finally {
       setIsBusy(false);
     }
@@ -544,6 +716,22 @@ export default function PetDetailScreen() {
           </View>
         </View>
 
+        {reviews.length > 0 ? (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionEyebrow}>Reviews</Text>
+            <Text style={styles.sectionTitle}>What adopters say about {pet.rehomerName}</Text>
+            <View style={styles.reviewsList}>
+              {reviews.map((review) => (
+                <View key={review.id} style={styles.reviewItem}>
+                  <Text style={styles.reviewRating}>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</Text>
+                  {review.comment ? <Text style={styles.bodyCopy}>{review.comment}</Text> : null}
+                  <Text style={styles.reviewAuthor}>— {review.reviewerName}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         {canShowAdopterActions ? (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionEyebrow}>Next step</Text>
@@ -555,6 +743,131 @@ export default function PetDetailScreen() {
                 ? "You can keep chatting with the rehomer, or cancel your interest if your plans change."
                 : "Save this pet, chat with the rehomer, or send your interest when you are ready."}
             </Text>
+
+            {isInterested && applicationStatus === "approved" ? (
+              <View style={styles.visitCard}>
+                <Text style={styles.visitCardTitle}>Meetup plan</Text>
+
+                {visitStatus === "agreed" ? (
+                  <Text style={styles.bodyCopy}>
+                    Visit agreed for {visitDate || "a date you both set"} — {getMeetingLabel(meetingPreference).toLowerCase()}.
+                    {meetingNotes ? ` Notes: ${meetingNotes}` : ""}
+                  </Text>
+                ) : visitStatus === "proposed" ? (
+                  <>
+                    <Text style={styles.bodyCopy}>
+                      {visitProposedBy === "rehomer"
+                        ? "The rehomer proposed a meetup:"
+                        : "You proposed this meetup, waiting on the rehomer:"}
+                      {" "}
+                      {visitDate} — {getMeetingLabel(meetingPreference).toLowerCase()}.
+                      {meetingNotes ? ` ${meetingNotes}` : ""}
+                    </Text>
+                    <View style={styles.visitActionsRow}>
+                      {visitProposedBy === "rehomer" ? (
+                        <Pressable disabled={isBusy} onPress={handleAcceptVisit} style={styles.secondaryButton}>
+                          <Text style={styles.secondaryButtonText}>Accept this plan</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable disabled={isBusy} onPress={openVisitEditor} style={styles.ghostButton}>
+                        <Text style={styles.ghostButtonText}>Suggest another time</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.bodyCopy}>
+                      Once you and the rehomer agree on a time and place, it'll be locked in here.
+                    </Text>
+                    <Pressable disabled={isBusy} onPress={openVisitEditor} style={styles.secondaryButton}>
+                      <Text style={styles.secondaryButtonText}>Propose a meetup</Text>
+                    </Pressable>
+                  </>
+                )}
+
+                {isEditingVisit ? (
+                  <View style={styles.visitEditor}>
+                    <TextInput
+                      onChangeText={setVisitDraftDate}
+                      placeholder="Date: YYYY-MM-DD"
+                      placeholderTextColor="#B08A58"
+                      style={styles.visitInput}
+                      value={visitDraftDate}
+                    />
+                    <PillGroup
+                      onChange={setVisitDraftPreference}
+                      options={MEETING_OPTIONS}
+                      value={visitDraftPreference}
+                    />
+                    <TextInput
+                      multiline
+                      onChangeText={setVisitDraftNotes}
+                      placeholder="Share the time, area, or any details that help."
+                      placeholderTextColor="#B08A58"
+                      style={[styles.visitInput, styles.visitTextarea]}
+                      value={visitDraftNotes}
+                    />
+                    <View style={styles.visitActionsRow}>
+                      <Pressable onPress={() => setIsEditingVisit(false)} style={styles.ghostButton}>
+                        <Text style={styles.ghostButtonText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable disabled={isBusy} onPress={handleSubmitVisit} style={styles.secondaryButton}>
+                        <Text style={styles.secondaryButtonText}>
+                          {isBusy ? "Sending..." : "Send plan"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            {isInterested && applicationStatus === "approved" ? (
+              <View style={styles.visitCard}>
+                <Text style={styles.visitCardTitle}>Adoption review</Text>
+
+                {hasReview ? (
+                  <Text style={styles.bodyCopy}>
+                    Thanks for reviewing {pet.rehomerName} — your feedback helps other adopters.
+                  </Text>
+                ) : isWritingReview ? (
+                  <View style={styles.visitEditor}>
+                    <PillGroup
+                      onChange={setReviewDraftRating}
+                      options={RATING_OPTIONS}
+                      value={reviewDraftRating}
+                    />
+                    <TextInput
+                      multiline
+                      onChangeText={setReviewDraftComment}
+                      placeholder={`Was ${pet.rehomerName} kind? Any tips they gave you?`}
+                      placeholderTextColor="#B08A58"
+                      style={[styles.visitInput, styles.visitTextarea]}
+                      value={reviewDraftComment}
+                    />
+                    <View style={styles.visitActionsRow}>
+                      <Pressable onPress={() => setIsWritingReview(false)} style={styles.ghostButton}>
+                        <Text style={styles.ghostButtonText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable disabled={isBusy} onPress={handleSubmitReview} style={styles.secondaryButton}>
+                        <Text style={styles.secondaryButtonText}>
+                          {isBusy ? "Sending..." : "Submit review"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.bodyCopy}>
+                      Taken {pet.name} home? Let other adopters know how {pet.rehomerName} was to work with.
+                    </Text>
+                    <Pressable onPress={() => setIsWritingReview(true)} style={styles.secondaryButton}>
+                      <Text style={styles.secondaryButtonText}>Leave a review</Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            ) : null}
 
             <View style={styles.actionStack}>
               <Pressable
@@ -807,9 +1120,68 @@ const styles = StyleSheet.create({
     textAlign: "right",
     flex: 1,
   },
+  reviewsList: {
+    gap: 12,
+  },
+  reviewItem: {
+    borderRadius: 16,
+    backgroundColor: "#FFF7E8",
+    padding: 14,
+    gap: 4,
+  },
+  reviewRating: {
+    color: "#F18700",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  reviewAuthor: {
+    color: "#9A7444",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
   actionStack: {
     gap: 10,
     marginTop: 12,
+  },
+  visitCard: {
+    borderRadius: 18,
+    backgroundColor: "#FFF7E8",
+    padding: 14,
+    marginTop: 14,
+    gap: 10,
+  },
+  visitCardTitle: {
+    color: "#8A5200",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  visitActionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  visitEditor: {
+    gap: 10,
+    marginTop: 4,
+  },
+  visitInput: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "rgba(245,154,35,0.24)",
+    backgroundColor: "#FFFFFF",
+    color: "#2A1500",
+    paddingHorizontal: 14,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  visitTextarea: {
+    minHeight: 80,
+    paddingTop: 12,
+    textAlignVertical: "top",
   },
   primaryButton: {
     minHeight: 52,

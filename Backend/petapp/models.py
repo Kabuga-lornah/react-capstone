@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
@@ -62,6 +63,7 @@ class CustomUser(AbstractUser):
         ('pt', 'Português'),
         ('ru', 'Русский'),
         ('sw', 'Swahili'),
+        ('zh', '中文'),
     ]
     preferred_language = models.CharField(
         max_length=10,
@@ -336,6 +338,36 @@ class AdoptionApplication(models.Model):
         return f"Application by {self.applicant} for {self.pet}"
 
 
+class RehomerReview(models.Model):
+    application = models.OneToOneField(
+        AdoptionApplication,
+        on_delete=models.CASCADE,
+        related_name='review',
+    )
+    pet = models.ForeignKey(Pet, on_delete=models.CASCADE, related_name='reviews')
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='written_reviews',
+    )
+    rehomer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='received_reviews',
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.rating}-star review of {self.rehomer} by {self.reviewer}"
+
+
 class PetWishlist(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -371,6 +403,7 @@ class Notification(models.Model):
     APPLICATION_REJECTED = 'application_rejected'
     VISIT_PROPOSED = 'visit_proposed'
     VISIT_AGREED = 'visit_agreed'
+    REVIEW_SUBMITTED = 'review_submitted'
 
     TYPE_CHOICES = [
         (WISHLIST_SAVED, 'Wishlist Saved'),
@@ -381,6 +414,7 @@ class Notification(models.Model):
         (APPLICATION_REJECTED, 'Application Rejected'),
         (VISIT_PROPOSED, 'Visit Proposed'),
         (VISIT_AGREED, 'Visit Agreed'),
+        (REVIEW_SUBMITTED, 'Review Submitted'),
     ]
 
     recipient = models.ForeignKey(

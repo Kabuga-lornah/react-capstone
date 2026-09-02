@@ -23,6 +23,7 @@ LANGUAGE_NAMES = {
     "fr": "French",
     "pt": "Portuguese",
     "ru": "Russian",
+    "zh": "Chinese",
 }
 
 

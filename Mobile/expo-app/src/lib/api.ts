@@ -545,53 +545,20 @@ export async function getUnreadNotificationCount() {
   return apiRequest("/notifications/unread-count/");
 }
 
-export async function listCommunityPosts() {
-  return apiRequest("/community/posts/");
-}
-
-export async function createCommunityPost(data: {
-  body?: string;
-  image_url?: string;
-  category?: string;
+export async function createRehomerReview(data: {
+  application_id: string | number;
+  rating: number;
+  comment?: string;
 }) {
-  return apiRequest("/community/posts/", {
+  return apiRequest("/reviews/create/", {
     method: "POST",
     data,
   });
 }
 
-export async function createCommunityComment(
-  postId: string | number,
-  data: {
-    body?: string;
-    image_url?: string;
-    video_url?: string;
-    sticker?: string;
-  },
-) {
-  return apiRequest(`/community/posts/${postId}/comments/`, {
-    method: "POST",
-    data,
-  });
-}
-
-export async function reactToCommunityPost(postId: string | number, value: "like" | "dislike") {
-  return apiRequest(`/community/posts/${postId}/reaction/`, {
-    method: "POST",
-    data: { value },
-  });
-}
-
-export async function reactToCommunityComment(commentId: string | number, value: "like" | "dislike") {
-  return apiRequest(`/community/comments/${commentId}/reaction/`, {
-    method: "POST",
-    data: { value },
-  });
-}
-
-export async function repostCommunityPost(postId: string | number, data: { body?: string } = {}) {
-  return apiRequest(`/community/posts/${postId}/repost/`, {
-    method: "POST",
-    data,
-  });
+export async function listRehomerReviews(params: { rehomer_id?: string | number; pet_id?: string | number }) {
+  const query = new URLSearchParams();
+  if (params.rehomer_id !== undefined) query.set("rehomer_id", String(params.rehomer_id));
+  if (params.pet_id !== undefined) query.set("pet_id", String(params.pet_id));
+  return apiRequest(`/reviews/?${query.toString()}`);
 }
