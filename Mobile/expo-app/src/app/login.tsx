@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/context/auth";
 import { API_BASE_URL, clearTokens, getCurrentUser, loginUser } from "@/lib/api";
 import { signInWithGoogle } from "@/lib/googleAuth";
-import { hasSeenOnboarding } from "@/lib/onboarding";
+import { buildPostAuthRedirect } from "@/lib/onboarding";
 
 type LoginType = "user" | "rehomer";
 type MessageState = { type: "" | "success" | "error"; text: string };
@@ -65,7 +65,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState(typeof params.email === "string" ? params.email : "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(true);
   const [message, setMessage] = useState<MessageState>(
     typeof params.successMessage === "string"
       ? { type: "success", text: params.successMessage }
@@ -82,47 +81,11 @@ export default function LoginScreen() {
 
   React.useEffect(() => {
     if (isReady && userData) {
-      router.replace(getRedirectPath(userData.role));
+      void buildPostAuthRedirect(getRedirectPath(userData.role)).then((destination) => {
+        router.replace(destination as never);
+      });
     }
   }, [isReady, userData]);
-
-  React.useEffect(() => {
-    let isActive = true;
-
-    const checkOnboarding = async () => {
-      try {
-        const seenOnboarding = await hasSeenOnboarding();
-
-        if (!isActive) {
-          return;
-        }
-
-        if (!seenOnboarding) {
-          router.replace("/welcome");
-          return;
-        }
-      } finally {
-        if (isActive) {
-          setIsCheckingOnboarding(false);
-        }
-      }
-    };
-
-    void checkOnboarding();
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
-  if (isCheckingOnboarding) {
-    return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator color="#F18700" size="large" />
-        <Text style={styles.loadingText}>Preparing your welcome experience...</Text>
-      </View>
-    );
-  }
 
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {
@@ -147,7 +110,7 @@ export default function LoginScreen() {
           access: tokenResponse.access,
           refresh: tokenResponse.refresh,
         });
-        router.replace(getRedirectPath(profile.role));
+        router.replace((await buildPostAuthRedirect(getRedirectPath(profile.role))) as never);
         return;
       }
 
@@ -166,7 +129,7 @@ export default function LoginScreen() {
         access: tokenResponse.access,
         refresh: tokenResponse.refresh,
       });
-      router.replace(getRedirectPath(profile.role));
+      router.replace((await buildPostAuthRedirect(getRedirectPath(profile.role))) as never);
     } catch (error: any) {
       setMessage({
         type: "error",
@@ -195,7 +158,7 @@ export default function LoginScreen() {
           access: response.access,
           refresh: response.refresh,
         });
-        router.replace(getRedirectPath(profile.role));
+        router.replace((await buildPostAuthRedirect(getRedirectPath(profile.role))) as never);
         return;
       }
 
@@ -214,7 +177,7 @@ export default function LoginScreen() {
         access: response.access,
         refresh: response.refresh,
       });
-      router.replace(getRedirectPath(profile.role));
+      router.replace((await buildPostAuthRedirect(getRedirectPath(profile.role))) as never);
     } catch (error: any) {
       setMessage({
         type: "error",
@@ -409,20 +372,6 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  loadingScreen: {
-    flex: 1,
-    backgroundColor: "#FFF8EE",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    gap: 14,
-  },
-  loadingText: {
-    color: "#8E6A40",
-    fontSize: 14,
-    fontWeight: "700",
-    textAlign: "center",
-  },
   screen: {
     flex: 1,
     backgroundColor: "#FFF8EE",

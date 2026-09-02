@@ -27,9 +27,10 @@ type MobileAppShellProps = {
 };
 
 const tabs = [
-  { label: "AI", path: "/", icon: "home-outline" },
-  { label: "Location", path: "/pets", icon: "map-marker-radius" },
+  { label: "Soni", path: "/", icon: "home-outline" },
+  { label: "Pets", path: "/pets", icon: "paw-outline" },
   { label: "Quiz", path: "/quiz", icon: "head-question-outline" },
+  { label: "Vets", path: "/vets", icon: "map-marker-radius" },
   { label: "Profile", path: "/profile", icon: "account-circle-outline" },
 ] as const;
 
@@ -190,8 +191,6 @@ export function MobileAppShell({
         {navTabs.map((tab) => {
           const isActive =
             pathname === tab.path ||
-            (tab.path === "/pet-pouch" && pathname.startsWith("/pet-pouch")) ||
-            (tab.path === "/community" && pathname.startsWith("/community")) ||
             (tab.path === "/chats" && pathname.startsWith("/chats")) ||
             (tab.path === "/profile" && pathname.startsWith("/profile")) ||
             (tab.path === "/rehomer-profile" && pathname.startsWith("/rehomer-profile"));

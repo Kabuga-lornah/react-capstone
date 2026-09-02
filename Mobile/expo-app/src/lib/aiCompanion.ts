@@ -17,11 +17,12 @@ const INTERESTS: DetectedInterest[] = [
   { key: "duck", label: "ducks", aliases: ["duck", "ducks"] },
 ];
 
-export const buildWelcomeMessage = (firstName?: string) => {
-  const name = firstName && firstName !== "friend" ? firstName : "";
-  const hello = name ? `Hi ${name}. How are you?` : "Hi. How are you?";
+export const AI_COMPANION_NAME = "Soni";
 
-  return `${hello} Welcome to My Furry Friends. What are you looking to adopt today? A dog, a cat, a rabbit, a bird, a snake, a tortoise, or something else?`;
+export const buildWelcomeMessage = (firstName?: string) => {
+  const name = firstName && firstName !== "friend" ? `, ${firstName}` : "";
+
+  return `Hi${name}, I'm ${AI_COMPANION_NAME}. What are you looking to adopt today? Dog, cat, rabbit, bird, snake, or something else?`;
 };
 
 export const detectPetInterest = (text: string): DetectedInterest | null => {
@@ -41,22 +42,6 @@ export const petMatchesInterest = (pet: CompanionPet, interest: DetectedInterest
     .toLowerCase();
 
   return interest.aliases.some((alias) => haystack.includes(alias));
-};
-
-const spaceLine = (pet: CompanionPet) => {
-  if (pet.spaceNeeded === "large") {
-    return `${pet.name} needs a generous amount of space to move and play.`;
-  }
-
-  if (pet.spaceNeeded === "medium") {
-    return `${pet.name} is happiest with a bit of room to stretch and explore.`;
-  }
-
-  if (pet.spaceNeeded === "small") {
-    return `${pet.name} can settle comfortably in a smaller home if the routine is steady.`;
-  }
-
-  return "";
 };
 
 const genderLine = (pet: CompanionPet) => {
@@ -86,27 +71,23 @@ const ageLine = (pet: CompanionPet) => {
 
 export const buildMatchIntro = (interest: DetectedInterest, count: number) => {
   if (count === 0) {
-    return `I've seen that you're interested in ${interest.label}. I don't have a match for that just yet, but you can tell me another type of pet.`;
+    return `No ${interest.label} available right now. Tell me another kind of pet?`;
   }
 
-  return `I've seen that you're interested in ${interest.label}. Let me show you ${
-    count === 1 ? "someone" : "a few companions"
-  } who might be a fit, one at a time, like a dating show.`;
+  return `Got it, ${interest.label}. Here ${count === 1 ? "is one match" : "are a few matches"}, one at a time.`;
 };
 
 export const buildPetNarration = (pet: CompanionPet, interest: DetectedInterest) => {
-  const traits = pet.personality.slice(0, 3).join(", ");
+  const traits = pet.personality.slice(0, 2).join(" and ");
   const parts = [
-    `This is ${pet.name}.`,
+    `${pet.name}.`,
     ageLine(pet),
     genderLine(pet),
-    pet.breed ? `${pet.name} is a ${pet.breed}.` : "",
-    spaceLine(pet),
-    traits ? `Personality-wise, think ${traits.toLowerCase()}.` : "",
-    pet.description ? pet.description : "",
+    pet.breed ? `A ${pet.breed}.` : "",
+    traits ? `${traits}.` : "",
   ].filter(Boolean);
 
-  return `I've seen that you're interested in ${interest.label}. ${parts.join(" ")}`;
+  return parts.join(" ");
 };
 
 export const speakText = async (text: string) => {
@@ -116,7 +97,7 @@ export const speakText = async (text: string) => {
     Speech.speak(text, {
       language: "en-US",
       pitch: 1,
-      rate: 0.94,
+      rate: 1.12,
     });
   } catch {
     // Speech is optional. The on-screen transcript still carries the conversation.

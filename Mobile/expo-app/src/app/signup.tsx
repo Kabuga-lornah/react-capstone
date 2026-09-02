@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/context/auth";
 import { registerUser } from "@/lib/api";
 import { signInWithGoogle } from "@/lib/googleAuth";
+import { buildPostAuthRedirect } from "@/lib/onboarding";
 
 type SignupType = "user" | "rehomer";
 
@@ -167,7 +168,7 @@ export default function SignupScreen() {
         access: response.access,
         refresh: response.refresh,
       });
-      router.replace(getRedirectPath(profile.role));
+      router.replace((await buildPostAuthRedirect(getRedirectPath(profile.role))) as never);
     } catch (submitError: any) {
       setError(submitError?.message || "Google signup failed. Please try again.");
     } finally {
