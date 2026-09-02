@@ -8,9 +8,11 @@
     "scheme": "expoapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.myfurryfriends.app"
     },
     "android": {
+      "package": "com.myfurryfriends.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -50,6 +52,12 @@
           "photosPermission": "Allow My Furry Friends to save the pictures it generates of pets in your space.",
           "savePhotosPermission": "Allow My Furry Friends to save the pictures it generates of pets in your space.",
           "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow My Furry Friends to use your location to find vet clinics near you."
         }
       ]
     ],

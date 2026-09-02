@@ -1,5 +1,6 @@
-import { router } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useAudioPlayer } from "expo-audio";
+import React, { useEffect, useMemo, useState } from "react";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import {
   Pressable,
@@ -10,45 +11,48 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AI_COMPANION_NAME } from "@/lib/aiCompanion";
 import { markOnboardingSeen } from "@/lib/onboarding";
+
+const ambienceSource = require("../../assets/audio/onboarding-ambience.mp3");
 
 const slides = [
   {
-    emoji: "🐾",
+    emoji: "✨",
     eyebrow: "Welcome",
-    title: "Meet pets that need a safe, loving home.",
-    text: "Browse cats, dogs, and small companions from rehomers who are trying to place them carefully.",
-    reminder: "The best matches start with calm homes, honest expectations, and a little patience.",
+    title: `Meet ${AI_COMPANION_NAME}, your adoption guide.`,
+    text: `Tell ${AI_COMPANION_NAME} what you're hoping to adopt, and she'll walk you through pets that could be a fit, one at a time.`,
+    reminder: "Just say a kind of pet, like dog, cat, or rabbit, and she'll take it from there.",
     accent: "#F18700",
     accentSoft: "#FFE0AF",
-    icon: "paw",
+    icon: "robot-happy-outline",
   },
   {
     emoji: "🧡",
     eyebrow: "Find Your Match",
     title: "Save favorites and come back to them in your Pet Pouch.",
-    text: "Shortlist pets you love, compare personalities, and use the app to keep your adoption journey organized.",
+    text: "Swipe through matches, compare personalities, and even see how a pet might look in your own home with the room visualizer.",
     reminder: "Great listings usually have clear photos, routines, and personality notes.",
     accent: "#E36A2E",
     accentSoft: "#FFD5C2",
     icon: "heart-multiple",
   },
   {
-    emoji: "🩺",
-    eyebrow: "Adopt Responsibly",
-    title: "Ask the right questions before you apply.",
-    text: "Check health history, vaccination, feeding routines, and the kind of home each pet needs before committing.",
-    reminder: "Adoption works best when the pet's routine and your lifestyle actually fit.",
+    emoji: "🧭",
+    eyebrow: "Getting Around",
+    title: "Everything else is one tap away.",
+    text: "Use the bar at the bottom of the app any time: browse pets, take the matching quiz, find nearby vet clinics, or check your profile.",
+    reminder: "You never have to go back to the start to switch what you're doing.",
     accent: "#D97706",
     accentSoft: "#FFE7B8",
-    icon: "stethoscope",
+    icon: "compass-outline",
   },
   {
     emoji: "🏡",
-    eyebrow: "A Safe Space",
+    eyebrow: "Adopt Responsibly",
     title: "Treat every adoption like a long-term promise.",
-    text: "This app is built to help serious adopters and caring rehomers make safer, more thoughtful matches.",
-    reminder: "Pets are family, so every step in the process should feel intentional.",
+    text: "Check health history, vaccination, and routines before committing. Pets are family, so every step should feel intentional.",
+    reminder: "Adoption works best when the pet's routine and your lifestyle actually fit.",
     accent: "#A8551F",
     accentSoft: "#F8D3BE",
     icon: "home-heart",
@@ -56,10 +60,23 @@ const slides = [
 ] as const;
 
 export default function WelcomeScreen() {
+  const { next } = useLocalSearchParams<{ next?: string }>();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isFinishing, setIsFinishing] = useState(false);
   const slide = slides[activeIndex];
   const isLastSlide = activeIndex === slides.length - 1;
+
+  const ambience = useAudioPlayer(ambienceSource);
+
+  useEffect(() => {
+    ambience.loop = true;
+    ambience.volume = 0.22;
+    ambience.play();
+
+    return () => {
+      ambience.pause();
+    };
+  }, [ambience]);
 
   const progressLabel = useMemo(
     () => `${activeIndex + 1} of ${slides.length}`,
@@ -72,8 +89,9 @@ export default function WelcomeScreen() {
     }
 
     setIsFinishing(true);
+    ambience.pause();
     await markOnboardingSeen();
-    router.replace("/");
+    router.replace((typeof next === "string" && next ? next : "/") as never);
   };
 
   return (

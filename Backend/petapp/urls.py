@@ -39,6 +39,7 @@ from .views import (
     WishlistListCreateView,
 )
 from .views_visualization import PetRoomVisualizationView
+from .views_vets import NearbyVetClinicsView
 
 urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
@@ -62,6 +63,7 @@ urlpatterns = [
     path('pets/create/', PetCreateView.as_view(), name='pet-create'),
     path('pets/<int:pk>/', PetDetailView.as_view(), name='pet-detail'),
     path('pets/<int:pk>/visualize-room/', PetRoomVisualizationView.as_view(), name='pet-visualize-room'),
+    path('vets/nearby/', NearbyVetClinicsView.as_view(), name='vets-nearby'),
 
     path('applications/create/', AdoptionApplicationCreateView.as_view(), name='application-create'),
     path('applications/my/', MyApplicationsListView.as_view(), name='application-my-list'),

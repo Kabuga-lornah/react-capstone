@@ -11,6 +11,15 @@ export type CompanionPet = {
   personality: string[];
   spaceNeeded: string;
   energyLevel: string;
+  careLevel: string;
+  groomingNeeds: string;
+  noiseLevel: string;
+  goodWithChildren: string;
+  goodWithOtherPets: string;
+  apartmentFriendly: string;
+  isVaccinated: boolean;
+  isDewormed: boolean;
+  isNeutered: boolean;
   location: string;
   city: string;
   status: string;
@@ -75,6 +84,15 @@ export const normalizeCompanionPet = (pet: any): CompanionPet => {
     personality,
     spaceNeeded: String(pet?.space_needed || "").trim().toLowerCase(),
     energyLevel: String(pet?.energy_level || "").trim().toLowerCase(),
+    careLevel: String(pet?.care_level || "").trim().toLowerCase(),
+    groomingNeeds: String(pet?.grooming_needs || "").trim().toLowerCase(),
+    noiseLevel: String(pet?.noise_level || "").trim().toLowerCase(),
+    goodWithChildren: String(pet?.good_with_children || "").trim().toLowerCase(),
+    goodWithOtherPets: String(pet?.good_with_other_pets || "").trim().toLowerCase(),
+    apartmentFriendly: String(pet?.apartment_friendly || "").trim().toLowerCase(),
+    isVaccinated: Boolean(pet?.is_vaccinated),
+    isDewormed: Boolean(pet?.is_dewormed),
+    isNeutered: Boolean(pet?.is_neutered),
     location:
       pet?.location ||
       [pet?.city, pet?.state, pet?.country].filter(Boolean).join(", ") ||

@@ -10,9 +10,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AiOrb } from "@/components/ai-orb";
+import { MobileAppShell } from "@/components/mobile-app-shell";
 import { PetSwipeDeck } from "@/components/pet-swipe-deck";
 import { useAuth } from "@/context/auth";
 import {
@@ -21,6 +21,7 @@ import {
   listPets,
 } from "@/lib/api";
 import {
+  AI_COMPANION_NAME,
   buildMatchIntro,
   buildPetNarration,
   buildWelcomeMessage,
@@ -30,7 +31,6 @@ import {
   stopSpeaking,
   type DetectedInterest,
 } from "@/lib/aiCompanion";
-import { hasSeenOnboarding } from "@/lib/onboarding";
 import { normalizeCompanionPet, type CompanionPet } from "@/lib/petUtils";
 
 type Stage = "greeting" | "showing";
@@ -57,38 +57,23 @@ export default function AiCompanionScreen() {
   const narration = currentPet && interest ? buildPetNarration(currentPet, interest) : "";
 
   useEffect(() => {
-    let active = true;
+    if (!isReady) {
+      return;
+    }
 
-    const boot = async () => {
-      const seenOnboarding = await hasSeenOnboarding();
+    if (!userData) {
+      router.replace("/login");
+      return;
+    }
 
-      if (!active) {
-        return;
-      }
+    if (userData.role === "rehomer") {
+      router.replace("/rehomer-dashboard");
+      return;
+    }
 
-      if (!seenOnboarding) {
-        router.replace("/welcome");
-        return;
-      }
-
-      if (isReady && userData?.role === "rehomer") {
-        router.replace("/rehomer-dashboard");
-        return;
-      }
-
-      if (
-        isReady &&
-        (userData?.role === "shelter_admin" || userData?.role === "platform_admin")
-      ) {
-        router.replace("/admin-dashboard");
-      }
-    };
-
-    void boot();
-
-    return () => {
-      active = false;
-    };
+    if (userData.role === "shelter_admin" || userData.role === "platform_admin") {
+      router.replace("/admin-dashboard");
+    }
   }, [isReady, userData]);
 
   useEffect(() => {
@@ -120,8 +105,8 @@ export default function AiCompanionScreen() {
       setMatches([]);
       setIndex(0);
       const wrapUp = interest
-        ? `That's everyone I have for ${interest.label} right now. What else would you like to adopt today?`
-        : "That's everyone for now. What else would you like to adopt today?";
+        ? `That's everyone for ${interest.label} right now. What else would you like to adopt?`
+        : "That's everyone for now. What else would you like to adopt?";
       setStatus(wrapUp);
       void speakText(wrapUp);
       return;
@@ -166,7 +151,7 @@ export default function AiCompanionScreen() {
 
     if (!detected) {
       const clarification =
-        "I can look for a dog, cat, rabbit, bird, snake, tortoise, chicken, or another companion. What are you hoping to adopt today?";
+        "Dog, cat, rabbit, bird, snake, tortoise, chicken, or another companion. Which one?";
       setStatus(clarification);
       void speakText(clarification);
       return;
@@ -204,34 +189,30 @@ export default function AiCompanionScreen() {
     }
   };
 
+  if (!isReady || !userData) {
+    return (
+      <View style={styles.bootScreen}>
+        <ActivityIndicator color="#F18700" size="large" />
+      </View>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.screen}>
+    <MobileAppShell subtitle={`Talk to ${AI_COMPANION_NAME} to find a match`} title={AI_COMPANION_NAME}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
       >
-        <View style={styles.topBar}>
-          <Text style={styles.brand}>
-            My<Text style={styles.brandAccent}>Furry</Text>Friends
-          </Text>
-          <Pressable
-            onPress={() => router.push(userData ? "/profile" : "/login")}
-            style={styles.topButton}
-          >
-            <Text style={styles.topButtonText}>{userData ? "Profile" : "Sign in"}</Text>
-          </Pressable>
-        </View>
-
         {stage === "greeting" ? (
           <View style={styles.greetingStage}>
-            <AiOrb size={248} speaking={!isThinking} />
-            <Text style={styles.kicker}>Your adoption companion</Text>
+            <AiOrb size={220} speaking={!isThinking} />
+            <Text style={styles.kicker}>Your adoption guide</Text>
             <Text style={styles.speech}>{isThinking ? "Looking through available pets..." : status}</Text>
           </View>
         ) : currentPet ? (
           <View style={styles.showStage}>
             <View style={styles.miniOrbRow}>
-              <AiOrb size={72} speaking />
+              <AiOrb size={64} speaking />
               <Text style={styles.miniStatus}>{likedMessage || status}</Text>
             </View>
             <PetSwipeDeck
@@ -244,9 +225,14 @@ export default function AiCompanionScreen() {
           </View>
         ) : null}
 
-        <Pressable onPress={() => router.push("/pets")} style={styles.browseLink}>
-          <Text style={styles.browseLinkText}>Browse pets nearby</Text>
-        </Pressable>
+        <View style={styles.shortcutRow}>
+          <Pressable onPress={() => router.push("/pets")} style={styles.shortcutLink}>
+            <Text style={styles.shortcutLinkText}>Browse pets nearby</Text>
+          </Pressable>
+          <Pressable onPress={() => router.push("/visualize")} style={styles.shortcutLink}>
+            <Text style={styles.shortcutLinkText}>See a pet in your space</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.composer}>
           <TextInput
@@ -275,46 +261,19 @@ export default function AiCompanionScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </MobileAppShell>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  bootScreen: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#FFF8EE",
   },
   flex: {
     flex: 1,
-    paddingHorizontal: 20,
-  },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 6,
-    paddingBottom: 8,
-  },
-  brand: {
-    color: "#3D2000",
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  brandAccent: {
-    color: "#E87E00",
-  },
-  topButton: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(245,154,35,0.28)",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  topButtonText: {
-    color: "#C16D00",
-    fontSize: 12,
-    fontWeight: "800",
   },
   greetingStage: {
     flex: 1,
@@ -356,11 +315,17 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 18,
   },
-  browseLink: {
-    alignItems: "center",
+  shortcutRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 16,
     paddingBottom: 10,
   },
-  browseLinkText: {
+  shortcutLink: {
+    paddingVertical: 4,
+  },
+  shortcutLinkText: {
     color: "#C16D00",
     fontSize: 13,
     fontWeight: "800",
@@ -369,7 +334,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingBottom: 16,
+    paddingBottom: 4,
   },
   input: {
     flex: 1,

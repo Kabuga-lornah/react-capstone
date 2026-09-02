@@ -72,3 +72,17 @@ export async function markOnboardingSeen() {
     // Ignore file persistence failures and keep onboarding usable.
   }
 }
+
+/**
+ * Where to send someone right after they finish signing in: the walkthrough
+ * (first time only, on this device) on the way to their real destination.
+ */
+export async function buildPostAuthRedirect(destination: string) {
+  const seen = await hasSeenOnboarding();
+
+  if (seen) {
+    return destination;
+  }
+
+  return { pathname: "/welcome" as const, params: { next: destination } };
+}
