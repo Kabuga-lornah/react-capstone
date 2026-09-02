@@ -7,3 +7,4 @@ python-decouple
 psycopg[binary]
 numpy
 scikit-learn
+requests

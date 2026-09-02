@@ -36,7 +36,22 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow My Furry Friends to access your photos so you can show a pet in your space.",
+          "cameraPermission": "Allow My Furry Friends to use your camera so you can photograph your space."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow My Furry Friends to save the pictures it generates of pets in your space.",
+          "savePhotosPermission": "Allow My Furry Friends to save the pictures it generates of pets in your space.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

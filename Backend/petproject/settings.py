@@ -175,6 +175,11 @@ else:
     ]
 
 
+# Used by petapp.visualization_service to composite pets into a room photo via
+# Gemini's image generation model. Leave unset to disable the feature.
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
+GEMINI_IMAGE_MODEL = os.getenv('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image').strip()
+
 GOOGLE_OAUTH_CLIENT_IDS = tuple(
     client_id
     for client_id in {
