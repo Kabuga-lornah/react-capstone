@@ -17,6 +17,7 @@ import { PetSwipeDeck } from "@/components/pet-swipe-deck";
 import { useAuth } from "@/context/auth";
 import {
   addToWishlist,
+  chatWithSoni,
   getAccessToken,
   listPets,
 } from "@/lib/api";
@@ -57,6 +58,8 @@ export default function AiCompanionScreen() {
   const [isThinking, setIsThinking] = useState(false);
   const [likedMessage, setLikedMessage] = useState("");
   const [dailyFact, setDailyFact] = useState("");
+  const [aiPets, setAiPets] = useState<CompanionPet[]>([]);
+  const chatHistory = useRef<{ role: "user" | "model"; text: string }[]>([]);
   const hasGreeted = useRef(false);
 
   useEffect(() => {
@@ -166,11 +169,34 @@ export default function AiCompanionScreen() {
     const detected = detectPetInterest(text);
     setInput("");
     setLikedMessage("");
+    setAiPets([]);
 
     if (!detected) {
-      const clarification = buildClarification(language);
-      setStatus(clarification);
-      void speakText(clarification, language);
+      setIsThinking(true);
+
+      try {
+        const response = await chatWithSoni(text, chatHistory.current, language);
+        chatHistory.current = [
+          ...chatHistory.current,
+          { role: "user" as const, text },
+          { role: "model" as const, text: response.reply },
+        ].slice(-12);
+
+        setStatus(response.reply);
+        void speakText(response.reply, language);
+
+        const referenced = Array.isArray(response.referenced_pets)
+          ? response.referenced_pets.map(normalizeCompanionPet)
+          : [];
+        setAiPets(referenced);
+      } catch {
+        const clarification = buildClarification(language);
+        setStatus(clarification);
+        void speakText(clarification, language);
+      } finally {
+        setIsThinking(false);
+      }
+
       return;
     }
 
@@ -217,14 +243,29 @@ export default function AiCompanionScreen() {
   return (
     <MobileAppShell subtitle={`Talk to ${AI_COMPANION_NAME} to find a match`} title={AI_COMPANION_NAME}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
         style={styles.flex}
       >
         {stage === "greeting" ? (
           <View style={styles.greetingStage}>
             <AiOrb size={220} speaking={!isThinking} />
             <Text style={styles.kicker}>Your adoption guide</Text>
-            <Text style={styles.speech}>{isThinking ? "Looking through available pets..." : status}</Text>
+            <Text style={styles.speech}>{isThinking ? "Thinking..." : status}</Text>
+
+            {!isThinking && aiPets.length > 0 ? (
+              <View style={styles.aiPetsRow}>
+                {aiPets.map((pet) => (
+                  <Pressable
+                    key={pet.id}
+                    onPress={() => router.push({ pathname: "/pet/[id]", params: { id: pet.id } })}
+                    style={styles.aiPetChip}
+                  >
+                    <Text style={styles.aiPetChipText}>View {pet.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
         ) : currentPet ? (
           <View style={styles.showStage}>
@@ -265,7 +306,7 @@ export default function AiCompanionScreen() {
             onSubmitEditing={() => {
               void handleAsk();
             }}
-            placeholder="Say dog, cat, rabbit..."
+            placeholder="Ask Soni anything about adopting..."
             placeholderTextColor="#B08A58"
             returnKeyType="send"
             style={styles.input}
@@ -322,6 +363,25 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
     paddingHorizontal: 8,
+  },
+  aiPetsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 16,
+    paddingHorizontal: 12,
+  },
+  aiPetChip: {
+    borderRadius: 999,
+    backgroundColor: "#F18700",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  aiPetChipText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
   },
   showStage: {
     flex: 1,

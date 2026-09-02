@@ -38,6 +38,7 @@ from .views import (
     WishlistDeleteView,
     WishlistListCreateView,
 )
+from .views_soni import SoniChatView
 from .views_tts import SpeakView
 from .views_uploads import ImageUploadView
 from .views_visualization import PetRoomVisualizationView
@@ -68,6 +69,7 @@ urlpatterns = [
     path('vets/nearby/', NearbyVetClinicsView.as_view(), name='vets-nearby'),
     path('uploads/image/', ImageUploadView.as_view(), name='image-upload'),
     path('voice/speak/', SpeakView.as_view(), name='voice-speak'),
+    path('soni/chat/', SoniChatView.as_view(), name='soni-chat'),
 
     path('applications/create/', AdoptionApplicationCreateView.as_view(), name='application-create'),
     path('applications/my/', MyApplicationsListView.as_view(), name='application-my-list'),

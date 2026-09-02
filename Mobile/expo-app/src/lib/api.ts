@@ -415,6 +415,17 @@ export async function synthesizeSpeech(text: string, language?: string) {
   });
 }
 
+export async function chatWithSoni(
+  message: string,
+  history: { role: "user" | "model"; text: string }[],
+  language?: string,
+) {
+  return apiRequest("/soni/chat/", {
+    method: "POST",
+    data: { message, history, language },
+  });
+}
+
 export async function visualizePetInRoom(
   petId: string | number,
   data: { room_image_base64: string; mime_type: string },

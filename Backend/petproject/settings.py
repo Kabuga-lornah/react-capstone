@@ -176,9 +176,12 @@ else:
 
 
 # Used by petapp.visualization_service to composite pets into a room photo via
-# Gemini's image generation model. Leave unset to disable the feature.
+# Gemini's image generation model, and by petapp.soni_ai for Soni's real
+# conversational replies (same key, different Gemini model). Leave unset to
+# disable both features.
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
 GEMINI_IMAGE_MODEL = os.getenv('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image').strip()
+GEMINI_TEXT_MODEL = os.getenv('GEMINI_TEXT_MODEL', 'gemini-2.5-flash').strip()
 
 # Used by petapp.vet_service to look up nearby veterinary clinics via the
 # Google Places API. Leave unset to disable the vets feature.
