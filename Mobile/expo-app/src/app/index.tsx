@@ -10,6 +10,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image } from "expo-image";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 import { AiOrb } from "@/components/ai-orb";
 import { MobileAppShell } from "@/components/mobile-app-shell";
@@ -59,6 +61,7 @@ export default function AiCompanionScreen() {
   const [likedMessage, setLikedMessage] = useState("");
   const [dailyFact, setDailyFact] = useState("");
   const [aiPets, setAiPets] = useState<CompanionPet[]>([]);
+  const [savedAiPetIds, setSavedAiPetIds] = useState<string[]>([]);
   const chatHistory = useRef<{ role: "user" | "model"; text: string }[]>([]);
   const hasGreeted = useRef(false);
 
@@ -138,6 +141,24 @@ export default function AiCompanionScreen() {
 
   const handlePass = () => {
     advanceDeck();
+  };
+
+  const handleSaveAiPet = async (pet: CompanionPet) => {
+    if (savedAiPetIds.includes(pet.id)) {
+      return;
+    }
+
+    if (!getAccessToken()) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      await addToWishlist(pet.id);
+      setSavedAiPetIds((current) => [...current, pet.id]);
+    } catch {
+      // Ignore save failures here; the pet's own detail page still lets them retry.
+    }
   };
 
   const handleLike = async () => {
@@ -255,15 +276,33 @@ export default function AiCompanionScreen() {
 
             {!isThinking && aiPets.length > 0 ? (
               <View style={styles.aiPetsRow}>
-                {aiPets.map((pet) => (
-                  <Pressable
-                    key={pet.id}
-                    onPress={() => router.push({ pathname: "/pet/[id]", params: { id: pet.id } })}
-                    style={styles.aiPetChip}
-                  >
-                    <Text style={styles.aiPetChipText}>View {pet.name}</Text>
-                  </Pressable>
-                ))}
+                {aiPets.map((pet) => {
+                  const isSaved = savedAiPetIds.includes(pet.id);
+                  return (
+                    <View key={pet.id} style={styles.aiPetCard}>
+                      <Pressable
+                        onPress={() => router.push({ pathname: "/pet/[id]", params: { id: pet.id } })}
+                        style={styles.aiPetCardMain}
+                      >
+                        <Image contentFit="cover" source={{ uri: pet.imageUrl }} style={styles.aiPetImage} />
+                        <Text numberOfLines={1} style={styles.aiPetName}>
+                          {pet.name}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        disabled={isSaved}
+                        onPress={() => void handleSaveAiPet(pet)}
+                        style={styles.aiPetSaveButton}
+                      >
+                        <MaterialCommunityIcons
+                          color={isSaved ? "#F18700" : "#B66900"}
+                          name={isSaved ? "heart" : "heart-outline"}
+                          size={16}
+                        />
+                      </Pressable>
+                    </View>
+                  );
+                })}
               </View>
             ) : null}
           </View>
@@ -368,20 +407,38 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: 8,
+    gap: 10,
     marginTop: 16,
     paddingHorizontal: 12,
   },
-  aiPetChip: {
-    borderRadius: 999,
-    backgroundColor: "#F18700",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+  aiPetCard: {
+    width: 92,
+    alignItems: "center",
+    gap: 6,
   },
-  aiPetChipText: {
-    color: "#FFFFFF",
-    fontSize: 13,
+  aiPetCardMain: {
+    alignItems: "center",
+    width: "100%",
+  },
+  aiPetImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    backgroundColor: "#FEE9BF",
+    marginBottom: 6,
+  },
+  aiPetName: {
+    color: "#1C1207",
+    fontSize: 12,
     fontWeight: "800",
+  },
+  aiPetSaveButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: "#FFF1D8",
+    alignItems: "center",
+    justifyContent: "center",
   },
   showStage: {
     flex: 1,

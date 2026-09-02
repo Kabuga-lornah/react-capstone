@@ -30,7 +30,7 @@ class SoniChatView(APIView):
         ).strip().lower()
 
         try:
-            reply_text, referenced_pets = chat_with_soni(message, history, language)
+            reply_text, referenced_pets = chat_with_soni(message, history, language, user=request.user)
         except SoniUnavailable as error:
             return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except SoniError as error:

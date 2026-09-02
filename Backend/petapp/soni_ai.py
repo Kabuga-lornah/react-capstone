@@ -45,23 +45,48 @@ def _describe_pet(pet: Pet) -> str:
     return f"- {header}. Personality: {traits}.{(' ' + description) if description else ''}"
 
 
-def _build_system_instruction(language: str, pets: List[Pet]) -> str:
+def _build_system_instruction(language: str, pets: List[Pet], user_name: str, is_new_conversation: bool) -> str:
     language_name = LANGUAGE_NAMES.get(language, "English")
     pet_lines = "\n".join(_describe_pet(pet) for pet in pets) or "(No pets are currently available.)"
+    greeting_note = (
+        f"You may address them by name ({user_name}) naturally, but don't force it into every reply."
+        if user_name
+        else "You don't know their name yet - you can ask for it once, naturally, but don't push it."
+    )
 
     return (
-        "You are Soni, a warm, upbeat, knowledgeable AI adoption guide inside a pet adoption "
-        "app called My Furry Friends. You help people find a pet to adopt and answer questions "
-        "about pet care, adoption, and the animals listed in this app.\n\n"
+        "You are Soni, a warm, upbeat, emotionally attentive AI adoption guide inside a pet "
+        "adoption app called My Furry Friends. You are talking with a specific person right now, "
+        f"not a general audience. {greeting_note}\n\n"
         f"Always reply in {language_name}, in 2 to 4 short sentences, since your reply is read "
-        "aloud - keep it conversational, warm, and easy to follow out loud.\n\n"
+        "aloud - keep it conversational, warm, and easy to follow out loud. Avoid sounding like a "
+        "search engine reading out a list; talk like a thoughtful friend who happens to know every "
+        "pet in the shelter personally.\n\n"
+        "BE A MATCHMAKER, NOT A SEARCH BOX: if someone's request is broad or you don't yet know "
+        "enough to make a genuinely good recommendation (their living space, experience with pets, "
+        "other pets or kids at home, activity level), ask ONE short, natural follow-up question "
+        "before recommending, instead of dumping options immediately. Once you do know enough, "
+        "commit to a specific recommendation with a real reason tied to what they told you - don't "
+        "keep asking questions forever.\n\n"
         "When you recommend a pet, you MUST only mention pets from the AVAILABLE PETS list "
-        "below, and refer to them by their exact name. Never invent a pet that isn't listed. "
-        "If nothing in the list fits what the person wants, say so honestly and suggest they "
-        "check back later or tell you something else they're open to.\n\n"
+        "below, and refer to them by their exact name. Never invent a pet that isn't listed, and "
+        "never invent details about a pet that aren't given below. If nothing in the list fits "
+        "what the person wants, say so honestly and suggest they check back later or tell you "
+        "something else they're open to.\n\n"
+        "This app also has a few other features you can mention when it's genuinely relevant "
+        "(not every message): a personality-matching quiz, a tool that shows how a specific pet "
+        "would look in the adopter's own room using their camera, and a nearby-vet-clinics finder. "
+        "Only bring these up naturally, when they'd actually help - e.g. suggest the quiz if someone "
+        "is torn between several pets, or the room tool once they seem set on one pet.\n\n"
         "If someone asks something unrelated to pets, you can answer briefly and kindly, then "
-        "gently steer back to helping them find or care for a pet.\n\n"
-        f"AVAILABLE PETS:\n{pet_lines}"
+        "gently steer back to helping them find or care for a pet."
+        + (
+            " This is the very start of the conversation - keep your first reply especially "
+            "short and inviting.\n\n"
+            if is_new_conversation
+            else "\n\n"
+        )
+        + f"AVAILABLE PETS:\n{pet_lines}"
     )
 
 
@@ -72,16 +97,29 @@ def _call_gemini(api_key: str, model: str, system_instruction: str, contents: Li
         json={
             "system_instruction": {"parts": [{"text": system_instruction}]},
             "contents": contents,
-            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 300},
+            "generationConfig": {"temperature": 0.75, "maxOutputTokens": 400},
         },
         timeout=20,
     )
+
+
+def _trim_to_last_sentence(text: str) -> str:
+    """If a reply was cut off mid-sentence (hit the token limit), trim back to
+    the last complete sentence so we never speak or display a dangling half
+    thought."""
+    for punctuation in (".", "!", "?", "。"):
+        index = text.rfind(punctuation)
+        if index != -1:
+            return text[: index + 1].strip()
+
+    return text.strip()
 
 
 def chat_with_soni(
     message: str,
     history: List[Dict[str, str]],
     language: str = "en",
+    user=None,
 ) -> Tuple[str, List[Pet]]:
     api_key = getattr(settings, "GEMINI_API_KEY", "")
 
@@ -99,7 +137,9 @@ def chat_with_soni(
     available_pets = list(
         Pet.objects.filter(status=Pet.AVAILABLE).order_by("-created_at")[:MAX_PETS_IN_PROMPT]
     )
-    system_instruction = _build_system_instruction(language, available_pets)
+    user_name = (getattr(user, "first_name", "") or "").strip()
+    is_new_conversation = len(history) == 0
+    system_instruction = _build_system_instruction(language, available_pets, user_name, is_new_conversation)
 
     contents = []
     for turn in history[-MAX_HISTORY_TURNS:]:
@@ -124,7 +164,9 @@ def chat_with_soni(
     candidates = payload.get("candidates") or []
 
     reply_text = ""
+    finish_reason = ""
     for candidate in candidates:
+        finish_reason = candidate.get("finishReason", finish_reason)
         for part in candidate.get("content", {}).get("parts", []):
             if part.get("text"):
                 reply_text += part["text"]
@@ -133,6 +175,9 @@ def chat_with_soni(
 
     if not reply_text:
         raise SoniError("Soni's AI service did not return a reply.")
+
+    if finish_reason == "MAX_TOKENS":
+        reply_text = _trim_to_last_sentence(reply_text) or reply_text
 
     reply_lower = reply_text.lower()
     referenced_pets = [pet for pet in available_pets if pet.name.lower() in reply_lower][:3]
