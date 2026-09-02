@@ -187,7 +187,8 @@ export default function SignupScreen() {
 
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
           style={styles.flex}
         >
           <ScrollView
@@ -445,7 +446,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 32,
+    paddingBottom: 160,
   },
   blobTop: {
     position: "absolute",
