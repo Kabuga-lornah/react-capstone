@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Tuple
 
 import requests
 from django.conf import settings
 
 from .models import Pet
+
+MAX_MESSAGE_LENGTH = 1000
+RECOMMEND_TAG_PATTERN = re.compile(r"\n?RECOMMEND:\s*(.+)\s*$", re.IGNORECASE)
 
 GEMINI_ENDPOINT = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -78,6 +82,11 @@ def _build_system_instruction(language: str, pets: List[Pet], user_name: str, is
         "would look in the adopter's own room using their camera, and a nearby-vet-clinics finder. "
         "Only bring these up naturally, when they'd actually help - e.g. suggest the quiz if someone "
         "is torn between several pets, or the room tool once they seem set on one pet.\n\n"
+        "If, and only if, your reply actively recommends one or more specific pets from the list, "
+        "add one final line after your spoken reply, in this exact machine-readable format and "
+        "nothing else on that line: RECOMMEND: Name1, Name2 (their exact names, comma-separated, "
+        "no more than 3). Omit this line entirely if you aren't recommending a specific pet in this "
+        "reply (for example, if you're only asking a follow-up question).\n\n"
         "If someone asks something unrelated to pets, you can answer briefly and kindly, then "
         "gently steer back to helping them find or care for a pet."
         + (
@@ -129,7 +138,7 @@ def chat_with_soni(
             "GEMINI_API_KEY environment variable."
         )
 
-    message = (message or "").strip()
+    message = (message or "").strip()[:MAX_MESSAGE_LENGTH]
 
     if not message:
         raise SoniError("No message was provided.")
@@ -179,7 +188,24 @@ def chat_with_soni(
     if finish_reason == "MAX_TOKENS":
         reply_text = _trim_to_last_sentence(reply_text) or reply_text
 
-    reply_lower = reply_text.lower()
-    referenced_pets = [pet for pet in available_pets if pet.name.lower() in reply_lower][:3]
+    reply_text, referenced_pets = _extract_recommendations(reply_text, available_pets)
 
     return reply_text, referenced_pets
+
+
+def _extract_recommendations(reply_text: str, available_pets: List[Pet]) -> Tuple[str, List[Pet]]:
+    """Pull out the RECOMMEND: tag Soni is asked to append when she names a
+    specific pet, and strip it from the text that gets shown or spoken.
+    Falls back to scanning the reply for pet names if the model didn't
+    follow the tag format, so a recommendation is never silently dropped."""
+    tag_match = RECOMMEND_TAG_PATTERN.search(reply_text)
+
+    if tag_match:
+        visible_text = reply_text[: tag_match.start()].strip()
+        named = [name.strip().lower() for name in tag_match.group(1).split(",") if name.strip()]
+        referenced = [pet for pet in available_pets if pet.name.lower() in named][:3]
+        return (visible_text or reply_text), referenced
+
+    reply_lower = reply_text.lower()
+    referenced = [pet for pet in available_pets if pet.name.lower() in reply_lower][:3]
+    return reply_text, referenced

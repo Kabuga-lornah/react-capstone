@@ -39,6 +39,7 @@ import {
 import { getDailyFact } from "@/lib/petFacts";
 import { normalizeCompanionPet, type CompanionPet } from "@/lib/petUtils";
 import { normalizeLanguage } from "@/lib/soniPhrases";
+import { loadSoniMemory, saveSoniMemory, type ChatTurn } from "@/lib/soniMemory";
 
 type Stage = "greeting" | "showing";
 
@@ -62,11 +63,17 @@ export default function AiCompanionScreen() {
   const [dailyFact, setDailyFact] = useState("");
   const [aiPets, setAiPets] = useState<CompanionPet[]>([]);
   const [savedAiPetIds, setSavedAiPetIds] = useState<string[]>([]);
-  const chatHistory = useRef<{ role: "user" | "model"; text: string }[]>([]);
+  const chatHistory = useRef<ChatTurn[]>([]);
   const hasGreeted = useRef(false);
 
   useEffect(() => {
     let active = true;
+
+    loadSoniMemory().then((history) => {
+      if (active) {
+        chatHistory.current = history;
+      }
+    });
 
     getDailyFact().then((fact) => {
       if (active) {
@@ -201,7 +208,8 @@ export default function AiCompanionScreen() {
           ...chatHistory.current,
           { role: "user" as const, text },
           { role: "model" as const, text: response.reply },
-        ].slice(-12);
+        ].slice(-20);
+        void saveSoniMemory(chatHistory.current);
 
         setStatus(response.reply);
         void speakText(response.reply, language);
