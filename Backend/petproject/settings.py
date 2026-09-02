@@ -180,6 +180,10 @@ else:
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
 GEMINI_IMAGE_MODEL = os.getenv('GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image').strip()
 
+# Used by petapp.vet_service to look up nearby veterinary clinics via the
+# Google Places API. Leave unset to disable the vets feature.
+GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY', '').strip()
+
 GOOGLE_OAUTH_CLIENT_IDS = tuple(
     client_id
     for client_id in {

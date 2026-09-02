@@ -388,6 +388,10 @@ export async function getPetDetail(id: string | number) {
   return apiRequest(`/pets/${id}/`);
 }
 
+export async function getNearbyVetClinics(lat: number, lng: number) {
+  return apiRequest("/vets/nearby/", { params: { lat, lng } });
+}
+
 export async function visualizePetInRoom(
   petId: string | number,
   data: { room_image_base64: string; mime_type: string },
