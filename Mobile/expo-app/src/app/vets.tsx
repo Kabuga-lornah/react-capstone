@@ -3,12 +3,24 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+
+const openLocationSettings = () => {
+  if (Platform.OS === "android") {
+    Linking.sendIntent("android.settings.LOCATION_SOURCE_SETTINGS").catch(() => {
+      Linking.openSettings();
+    });
+    return;
+  }
+
+  Linking.openURL("app-settings:").catch(() => Linking.openSettings());
+};
 
 import { MobileAppShell } from "@/components/mobile-app-shell";
 import { ApiError, getNearbyVetClinics } from "@/lib/api";
@@ -24,7 +36,14 @@ type VetClinic = {
   maps_url: string;
 };
 
-type Stage = "loading" | "permission-denied" | "results" | "empty" | "unavailable" | "error";
+type Stage =
+  | "loading"
+  | "permission-denied"
+  | "services-disabled"
+  | "results"
+  | "empty"
+  | "unavailable"
+  | "error";
 
 export default function VetsScreen() {
   const [stage, setStage] = useState<Stage>("loading");
@@ -40,6 +59,12 @@ export default function VetsScreen() {
 
       if (!permission.granted) {
         setStage("permission-denied");
+        return;
+      }
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        setStage("services-disabled");
         return;
       }
 
@@ -90,6 +115,22 @@ export default function VetsScreen() {
           </Text>
           <Pressable onPress={() => void load()} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {stage === "services-disabled" ? (
+        <View style={styles.center}>
+          <MaterialCommunityIcons color="#D97706" name="crosshairs-gps" size={40} />
+          <Text style={styles.title}>Turn on your location</Text>
+          <Text style={styles.helperText}>
+            Your phone's location is switched off. Turn it on so we can show vet clinics near you.
+          </Text>
+          <Pressable onPress={openLocationSettings} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>Turn on location</Text>
+          </Pressable>
+          <Pressable onPress={() => void load()} style={styles.secondaryLink}>
+            <Text style={styles.secondaryLinkText}>I turned it on, try again</Text>
           </Pressable>
         </View>
       ) : null}
@@ -204,6 +245,14 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "800",
+  },
+  secondaryLink: {
+    paddingVertical: 6,
+  },
+  secondaryLinkText: {
+    color: "#B66900",
+    fontSize: 13,
+    fontWeight: "700",
   },
   list: {
     gap: 12,

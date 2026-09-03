@@ -61,6 +61,7 @@ export default function AiCompanionScreen() {
   const [isThinking, setIsThinking] = useState(false);
   const [likedMessage, setLikedMessage] = useState("");
   const [dailyFact, setDailyFact] = useState("");
+  const [isFactOpen, setIsFactOpen] = useState(false);
   const [aiPets, setAiPets] = useState<CompanionPet[]>([]);
   const [savedAiPetIds, setSavedAiPetIds] = useState<string[]>([]);
   const chatHistory = useRef<ChatTurn[]>([]);
@@ -331,11 +332,30 @@ export default function AiCompanionScreen() {
         ) : null}
 
         {stage === "greeting" && dailyFact ? (
-          <Pressable onPress={() => void speakText(dailyFact)} style={styles.factCard}>
-            <Text style={styles.factKicker}>Fact of the day</Text>
-            <Text style={styles.factText}>{dailyFact}</Text>
-            <Text style={styles.factHint}>Tap to hear it</Text>
-          </Pressable>
+          isFactOpen ? (
+            <Pressable
+              onPress={() => setIsFactOpen(false)}
+              style={styles.factCard}
+            >
+              <View style={styles.factCardHeader}>
+                <Text style={styles.factKicker}>Fact of the day</Text>
+                <MaterialCommunityIcons color="#B66900" name="close" size={16} />
+              </View>
+              <Text style={styles.factText}>{dailyFact}</Text>
+              <Pressable
+                onPress={() => void speakText(dailyFact)}
+                style={styles.factHintButton}
+              >
+                <MaterialCommunityIcons color="#B66900" name="volume-high" size={13} />
+                <Text style={styles.factHint}>Hear it</Text>
+              </Pressable>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => setIsFactOpen(true)} style={styles.factBubble}>
+              <MaterialCommunityIcons color="#B66900" name="lightbulb-on-outline" size={18} />
+              <Text style={styles.factBubbleText}>Fact of the day</Text>
+            </Pressable>
+          )
         ) : null}
 
         <View style={styles.shortcutRow}>
@@ -395,21 +415,21 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   kicker: {
-    marginTop: 18,
+    marginTop: 14,
     color: "#D97706",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.1,
     textTransform: "uppercase",
   },
   speech: {
-    marginTop: 12,
+    marginTop: 8,
     color: "#3D2208",
-    fontSize: 22,
-    lineHeight: 30,
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: "700",
     textAlign: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: 20,
   },
   aiPetsRow: {
     flexDirection: "row",
@@ -465,6 +485,24 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 18,
   },
+  factBubble: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(245,154,35,0.24)",
+    backgroundColor: "#FFF1D8",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  factBubbleText: {
+    color: "#B66900",
+    fontSize: 12,
+    fontWeight: "800",
+  },
   factCard: {
     borderRadius: 18,
     borderWidth: 1,
@@ -474,13 +512,18 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginBottom: 12,
   },
+  factCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
   factKicker: {
     color: "#B66900",
     fontSize: 11,
     fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.6,
-    marginBottom: 6,
   },
   factText: {
     color: "#3D2500",
@@ -488,11 +531,17 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: "600",
   },
+  factHintButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    marginTop: 8,
+  },
   factHint: {
     color: "#B08A58",
     fontSize: 11,
     fontWeight: "700",
-    marginTop: 6,
   },
   shortcutRow: {
     flexDirection: "row",

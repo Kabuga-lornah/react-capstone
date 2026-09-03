@@ -1,5 +1,6 @@
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import React, { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -78,7 +79,7 @@ export function AiOrb({ size = 240, speaking = true }: AiOrbProps) {
         ]}
       >
         <View style={styles.innerShine} />
-        <Text style={[styles.paw, { fontSize: Math.round(size * 0.28) }]}>🐾</Text>
+        <MaterialCommunityIcons color="#FFF3D9" name="paw" size={Math.round(size * 0.32)} />
       </Animated.View>
     </View>
   );
@@ -113,8 +114,5 @@ const styles = StyleSheet.create({
     height: "28%",
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.38)",
-  },
-  paw: {
-    textAlign: "center",
   },
 });
