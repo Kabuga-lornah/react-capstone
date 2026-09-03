@@ -111,13 +111,13 @@ export default function AiCompanionScreen() {
   }, [isReady, userData]);
 
   useEffect(() => {
-    if (hasGreeted.current) {
+    if (hasGreeted.current || !isReady || !userData) {
       return;
     }
 
     hasGreeted.current = true;
     void speakText(welcome, language);
-  }, [welcome, language]);
+  }, [welcome, language, isReady, userData]);
 
   useEffect(() => {
     if (stage !== "showing" || !narration) {
