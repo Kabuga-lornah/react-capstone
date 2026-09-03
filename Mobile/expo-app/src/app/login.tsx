@@ -1,4 +1,4 @@
-import { Link, router, useLocalSearchParams } from "expo-router";
+import { Link, router, useLocalSearchParams, useRootNavigationState } from "expo-router";
 import React, { useMemo, useState } from "react";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import {
@@ -74,18 +74,19 @@ export default function LoginScreen() {
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   const currentBaseUrl = useMemo(() => API_BASE_URL, []);
+  const rootNavigationState = useRootNavigationState();
 
   React.useEffect(() => {
     setType(initialType);
   }, [initialType]);
 
   React.useEffect(() => {
-    if (isReady && userData) {
+    if (rootNavigationState?.key && isReady && userData) {
       void buildPostAuthRedirect(getRedirectPath(userData.role)).then((destination) => {
         router.replace(destination as never);
       });
     }
-  }, [isReady, userData]);
+  }, [rootNavigationState?.key, isReady, userData]);
 
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {

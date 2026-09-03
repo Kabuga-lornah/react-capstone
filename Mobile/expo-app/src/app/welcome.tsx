@@ -69,12 +69,20 @@ export default function WelcomeScreen() {
   const ambience = useAudioPlayer(ambienceSource);
 
   useEffect(() => {
-    ambience.loop = true;
-    ambience.volume = 0.22;
-    ambience.play();
+    try {
+      ambience.loop = true;
+      ambience.volume = 0.22;
+      ambience.play();
+    } catch {
+      // Ambient sound is a nice-to-have; ignore playback failures.
+    }
 
     return () => {
-      ambience.pause();
+      try {
+        ambience.pause();
+      } catch {
+        // The player may already be released by the time this runs.
+      }
     };
   }, [ambience]);
 
@@ -89,7 +97,11 @@ export default function WelcomeScreen() {
     }
 
     setIsFinishing(true);
-    ambience.pause();
+    try {
+      ambience.pause();
+    } catch {
+      // The player may already be released; not worth blocking navigation over.
+    }
     await markOnboardingSeen();
     router.replace((typeof next === "string" && next ? next : "/") as never);
   };
