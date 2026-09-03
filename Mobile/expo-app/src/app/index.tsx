@@ -65,7 +65,6 @@ export default function AiCompanionScreen() {
   const [aiPets, setAiPets] = useState<CompanionPet[]>([]);
   const [savedAiPetIds, setSavedAiPetIds] = useState<string[]>([]);
   const chatHistory = useRef<ChatTurn[]>([]);
-  const hasGreeted = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -111,23 +110,6 @@ export default function AiCompanionScreen() {
   }, [isReady, userData]);
 
   useEffect(() => {
-    if (hasGreeted.current || !isReady || !userData) {
-      return;
-    }
-
-    hasGreeted.current = true;
-    void speakText(welcome, language);
-  }, [welcome, language, isReady, userData]);
-
-  useEffect(() => {
-    if (stage !== "showing" || !narration) {
-      return;
-    }
-
-    void speakText(narration, language);
-  }, [narration, stage, currentPet?.id, language]);
-
-  useEffect(() => {
     return () => {
       void stopSpeaking();
     };
@@ -140,7 +122,6 @@ export default function AiCompanionScreen() {
       setIndex(0);
       const wrapUp = buildWrapUp(interest?.label ?? null, language);
       setStatus(wrapUp);
-      void speakText(wrapUp, language);
       return;
     }
 
@@ -213,7 +194,6 @@ export default function AiCompanionScreen() {
         void saveSoniMemory(chatHistory.current);
 
         setStatus(response.reply);
-        void speakText(response.reply, language);
 
         const referenced = Array.isArray(response.referenced_pets)
           ? response.referenced_pets.map(normalizeCompanionPet)
@@ -222,7 +202,6 @@ export default function AiCompanionScreen() {
       } catch {
         const clarification = buildClarification(language);
         setStatus(clarification);
-        void speakText(clarification, language);
       } finally {
         setIsThinking(false);
       }
@@ -249,14 +228,11 @@ export default function AiCompanionScreen() {
 
       if (available.length > 0) {
         setStage("showing");
-      } else {
-        void speakText(intro, language);
       }
     } catch {
       const errorText =
         "I couldn't reach the pets list just now. Check that the backend is running, then tell me again what you'd like to adopt.";
       setStatus(errorText);
-      void speakText(errorText, language);
     } finally {
       setIsThinking(false);
     }
@@ -282,6 +258,13 @@ export default function AiCompanionScreen() {
             <AiOrb size={220} speaking={!isThinking} />
             <Text style={styles.kicker}>Your adoption guide</Text>
             <Text style={styles.speech}>{isThinking ? "Thinking..." : status}</Text>
+
+            {!isThinking ? (
+              <Pressable onPress={() => void speakText(status, language)} style={styles.hearButton}>
+                <MaterialCommunityIcons color="#B66900" name="volume-high" size={13} />
+                <Text style={styles.hearButtonText}>Hear this</Text>
+              </Pressable>
+            ) : null}
 
             {!isThinking && aiPets.length > 0 ? (
               <View style={styles.aiPetsRow}>
@@ -320,6 +303,12 @@ export default function AiCompanionScreen() {
             <View style={styles.miniOrbRow}>
               <AiOrb size={64} speaking />
               <Text style={styles.miniStatus}>{likedMessage || status}</Text>
+              <Pressable
+                onPress={() => void speakText(narration || likedMessage || status, language)}
+                style={styles.miniHearButton}
+              >
+                <MaterialCommunityIcons color="#B66900" name="volume-high" size={16} />
+              </Pressable>
             </View>
             <PetSwipeDeck
               pet={currentPet}
@@ -484,6 +473,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     lineHeight: 18,
+  },
+  miniHearButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: "#FFF1D8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hearButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 999,
+    backgroundColor: "#FFF1D8",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 10,
+  },
+  hearButtonText: {
+    color: "#B66900",
+    fontSize: 11,
+    fontWeight: "800",
   },
   factBubble: {
     alignSelf: "center",
